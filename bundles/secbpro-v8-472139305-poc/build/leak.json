@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "bdc8f396b7d81e6521ee395970935edede39349a"
+  ],
+  "target_files": [
+    "src/objects/js-number-format.cc"
+  ]
+}
