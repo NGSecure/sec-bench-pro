@@ -86,7 +86,7 @@ task-server(判定)  = 上游漏洞版镜像 + 修复版的运行时文件(引�
 
 ## 6. 在本机运行(试点)
 
-需要:x86-64 Linux,Docker 20.10+(含 compose v2),Python 3.9+。两题共需下载约 20 GB(V8 10.2 GB,SpiderMonkey 9.9 GB),建议预留 80 GB 磁盘。
+需要:x86-64 Linux,Docker 20.10+(含 compose v2),Python 3.9+;阶段 2 另需 [uv](https://docs.astral.sh/uv/getting-started/installation/)。两题共需下载约 20 GB(V8 10.2 GB,SpiderMonkey 9.9 GB),建议预留 80 GB 磁盘。
 
 ```bash
 git clone -b claude/project-thread-l7t0hu https://github.com/NGSecure/sec-bench-pro.git && cd sec-bench-pro
@@ -100,12 +100,21 @@ bash bundles/secbpro-sm-2009303-poc/build.sh
 bash tools/e2e_compose.sh bundles/secbpro-v8-472139305-poc controls/v8/forged_markers_quit.js
 bash tools/e2e_compose.sh bundles/secbpro-sm-2009303-poc  controls/sm/forged_markers_quit.js
 
+# 阶段 2 准备(一次性,在公网做:uv sync 要访问 PyPI)。NEWPLATFORM_DIR 是 NGSecure/VulAgent
+# 仓库 harbortask-newplatform 分支的 new_platform_harbor/(main 上没有);cwm SDK 不在它的依赖里,
+# wheel 在同一分支的 VulnAgent/harborpush/。稀疏检出只下载约 13 MB(整个分支约 500 MB)。
+git clone --depth 1 --filter=blob:none --sparse -b harbortask-newplatform https://github.com/NGSecure/VulAgent.git ../VulAgent
+git -C ../VulAgent sparse-checkout set new_platform_harbor/newplatform VulnAgent/harborpush
+export NEWPLATFORM_DIR="$(cd ../VulAgent/new_platform_harbor && pwd)"
+(cd "$NEWPLATFORM_DIR" && uv sync && uv pip install ../VulnAgent/harborpush/cwm_sdk-0.1.24-py3-none-any.whl)
+
 # 阶段 2(上传网络):推送到 SWR,并回填 task.toml 的 docker_image / task_server_image
-export NEWPLATFORM_DIR=/path/to/VulAgent/new_platform_harbor
 docker login swr-coder-data-platform-wce1sr.swr-pro.myhuaweicloud.com
 bash bundles/secbpro-v8-472139305-poc/push.sh
 bash bundles/secbpro-sm-2009303-poc/push.sh
 ```
+
+准备好 `NEWPLATFORM_DIR` 后不要再在其中单独运行 `uv sync`:它做精确同步,会删掉未声明的 cwm;push.sh 使用的 `uv run` 不会删。误删时重跑上面的 `uv pip install` 即可。缺少 cwm 时 push.sh 在推送前报错退出,并给出安装命令。
 
 `build.sh` 结束后修复版镜像不再需要,可以 `docker rmi` 释放空间(`tools/batch.sh` 会自动做)。真实镜像带完整源码树和 git,泄漏检查会额外验证:修复补丁可正向应用、不可反向应用,修复提交不在仓库中,历史只有一个提交。
 

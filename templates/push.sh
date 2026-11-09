@@ -4,15 +4,27 @@
 # login=False): no platform API and no platform account, but docker on this machine
 # must already be logged in to SWR:
 #   docker login swr-coder-data-platform-wce1sr.swr-pro.myhuaweicloud.com
-# These bundles live OUTSIDE the newplatform uv project, so point NEWPLATFORM_DIR
-# at your local VulAgent/new_platform_harbor (the uv project that holds the
-# newplatform package + the cwm SDK). Everything else is pre-filled.
-#   export NEWPLATFORM_DIR=/path/to/VulAgent/new_platform_harbor
+# NEWPLATFORM_DIR is the uv project that holds the newplatform package:
+# new_platform_harbor/ on the harbortask-newplatform branch of NGSecure/VulAgent
+# (not on main). The cwm SDK is not among its declared dependencies; its wheel is on
+# the same branch, in VulnAgent/harborpush/. One-time setup, needs uv (uv sync
+# downloads from PyPI, so do it on the public network):
+#   git clone --depth 1 --filter=blob:none --sparse -b harbortask-newplatform \
+#       https://github.com/NGSecure/VulAgent.git
+#   git -C VulAgent sparse-checkout set new_platform_harbor/newplatform VulnAgent/harborpush
+#   export NEWPLATFORM_DIR="$PWD/VulAgent/new_platform_harbor"
+#   (cd "$NEWPLATFORM_DIR" && uv sync && uv pip install ../VulnAgent/harborpush/cwm_sdk-0.1.24-py3-none-any.whl)
+# A later plain `uv sync` there removes cwm again (exact sync); the `uv run` below
+# keeps it. Everything else is pre-filled.
 #   bash @@BUNDLE@@/push.sh
 set -euo pipefail
 
-: "${NEWPLATFORM_DIR:?set NEWPLATFORM_DIR to your local VulAgent/new_platform_harbor}"
-[ -d "$NEWPLATFORM_DIR" ] || { echo "NEWPLATFORM_DIR not a dir: $NEWPLATFORM_DIR" >&2; exit 1; }
+: "${NEWPLATFORM_DIR:?set NEWPLATFORM_DIR to new_platform_harbor of NGSecure/VulAgent (branch harbortask-newplatform); setup steps are at the top of this script}"
+[ -d "$NEWPLATFORM_DIR/newplatform" ] || {
+  echo "NEWPLATFORM_DIR=$NEWPLATFORM_DIR is not new_platform_harbor (no newplatform/ in it); setup steps are at the top of $0" >&2
+  exit 1
+}
+command -v uv >/dev/null || { echo "uv not found; install it: https://docs.astral.sh/uv/getting-started/installation/" >&2; exit 1; }
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # this bundle dir (absolute)
 B="$(basename "$HERE")"
@@ -49,7 +61,13 @@ try:
     from newplatform.errors import HarborPushError, UsageError
 except ImportError as exc:
     print("error: %s" % exc, file=sys.stderr)
-    print("  NEWPLATFORM_DIR must be the new_platform_harbor uv project with the cwm SDK installed", file=sys.stderr)
+    if (exc.name or "").split(".")[0] == "cwm":
+        print("  the cwm SDK (cwm_sdk 0.1.24) is missing from this uv project; install it once with:", file=sys.stderr)
+        print("    cd '%s' && uv pip install ../VulnAgent/harborpush/cwm_sdk-0.1.24-py3-none-any.whl" % Path.cwd(),
+              file=sys.stderr)
+    else:
+        print("  NEWPLATFORM_DIR must be new_platform_harbor of NGSecure/VulAgent, branch harbortask-newplatform",
+              file=sys.stderr)
     sys.exit(2)
 
 registry, line, user, pool_id, refs, task_toml = sys.argv[1:7]
