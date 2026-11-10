@@ -1,0 +1,10 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "581bca24327d088eaa5d6689a1428aa4cf28fbb3"
+  ],
+  "target_files": [
+    "src/sandbox/code-entrypoint-tag.h",
+    "src/sandbox/js-dispatch-table-inl.h"
+  ]
+}

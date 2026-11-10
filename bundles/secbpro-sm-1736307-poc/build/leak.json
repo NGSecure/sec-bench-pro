@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "5ffc1340655f"
+  ],
+  "target_files": [
+    "js/src/jit/MIR.cpp"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "0264cf850afd91cdd3956066e0b00b982566f684"
+  ],
+  "target_files": [
+    "js/src/proxy/CrossCompartmentWrapper.cpp"
+  ]
+}

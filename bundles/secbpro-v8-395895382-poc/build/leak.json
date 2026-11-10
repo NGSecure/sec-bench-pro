@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "da14a949b0dc122c848f556b9e89ab1064a73306"
+  ],
+  "target_files": [
+    "src/compiler/js-call-reducer.cc"
+  ]
+}

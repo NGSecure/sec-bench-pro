@@ -1,0 +1,10 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "410f860463dd8df0905b757fdd7ca53ee1a88c4d"
+  ],
+  "target_files": [
+    "src/maglev/maglev-ir.cc",
+    "src/builtins/js-trampoline-assembler.cc"
+  ]
+}

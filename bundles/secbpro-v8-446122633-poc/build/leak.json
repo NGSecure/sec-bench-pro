@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "48c3551179299151b044b2c161566465497c0407"
+  ],
+  "target_files": [
+    "src/compiler/turboshaft/wasm-gc-typed-optimization-reducer.cc"
+  ]
+}

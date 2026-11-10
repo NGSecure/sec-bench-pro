@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "3905f930df89"
+  ],
+  "target_files": [
+    "js/src/jit/BaselineJIT.cpp"
+  ]
+}

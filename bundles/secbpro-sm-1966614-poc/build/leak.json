@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "e51daa6f33122c66c59a9dc8080807ba1c003131"
+  ],
+  "target_files": [
+    "js/src/jit/IonAnalysis.cpp"
+  ]
+}

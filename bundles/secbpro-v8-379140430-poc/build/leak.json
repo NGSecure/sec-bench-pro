@@ -1,0 +1,10 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "0d15bbf1fb92f435e10c14f858d82d4cca851bf4",
+    "74caf5449508c72236970e5d9e01b7212d609122"
+  ],
+  "target_files": [
+    "src/runtime/runtime-wasm.cc"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "910cb91733dc47b8f4a3dc9f1ca640b728f97aad"
+  ],
+  "target_files": [
+    "src/wasm/baseline/liftoff-assembler.cc"
+  ]
+}

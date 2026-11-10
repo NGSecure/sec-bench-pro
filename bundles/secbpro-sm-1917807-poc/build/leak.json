@@ -1,0 +1,11 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "16781a13b5ecce172cf06a272f1cee629c9afee2"
+  ],
+  "target_files": [
+    "js/src/wasm/WasmFrameIter.cpp",
+    "js/src/wasm/WasmStubs.cpp",
+    "js/src/jit/JitFrames.cpp"
+  ]
+}

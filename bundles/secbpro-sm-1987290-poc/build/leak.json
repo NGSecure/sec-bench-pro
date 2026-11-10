@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "2b8155c2c4c299955d4ae81423992ed56a838aee"
+  ],
+  "target_files": [
+    "js/src/builtin/FinalizationRegistryObject.cpp"
+  ]
+}

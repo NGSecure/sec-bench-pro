@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "a972bc44e32acb2ed019326a15df10013c1038dd"
+  ],
+  "target_files": [
+    "src/maglev/maglev-graph-builder.cc"
+  ]
+}

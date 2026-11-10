@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "de42e588f4f7bafc773e630f937407924528cb36"
+  ],
+  "target_files": [
+    "src/objects/js-array-buffer.cc"
+  ]
+}

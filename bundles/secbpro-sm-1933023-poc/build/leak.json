@@ -1,0 +1,10 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "6a1bdb80cb57384cd915ae2e27d3363a13ecb6f9"
+  ],
+  "target_files": [
+    "js/src/builtin/intl/Segmenter.cpp",
+    "js/src/builtin/intl/Segmenter.h"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "12a53cc493f02f64f30dd08c0ec03a866ae45481"
+  ],
+  "target_files": [
+    "src/objects/backing-store.h",
+    "src/wasm/wasm-js.cc"
+  ]
+}

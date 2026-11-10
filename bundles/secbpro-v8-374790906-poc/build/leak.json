@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "9997fc01395257cffd7231f14bb4d9fa7eaa9665"
+  ],
+  "target_files": [
+    "src/wasm/function-body-decoder-impl.h"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "0995847692570d46684b778af517a08c09748184"
+  ],
+  "target_files": [
+    "js/src/vm/SavedStacks.cpp"
+  ]
+}

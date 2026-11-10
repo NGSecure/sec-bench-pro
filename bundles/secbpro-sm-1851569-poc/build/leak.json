@@ -1,0 +1,13 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "a637208c750c031c65e5c162660b0970786a4399"
+  ],
+  "target_files": [
+    "js/src/jit/MacroAssembler.cpp",
+    "js/src/wasm/WasmBaselineCompile.cpp",
+    "js/src/wasm/WasmIonCompile.cpp",
+    "js/src/wasm/WasmValType.cpp",
+    "js/src/wasm/WasmValidate.cpp"
+  ]
+}

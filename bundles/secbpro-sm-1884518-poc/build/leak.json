@@ -1,0 +1,12 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "ce5cbe497833"
+  ],
+  "target_files": [
+    "js/src/wasm/WasmBCClass.h",
+    "js/src/wasm/WasmBaselineCompile.cpp",
+    "js/src/wasm/WasmBuiltins.cpp",
+    "js/src/wasm/WasmCodegenTypes.h"
+  ]
+}

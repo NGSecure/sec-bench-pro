@@ -1,0 +1,10 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "675d684c0cbc642f2c154f91a7ae40f29aa6129d"
+  ],
+  "target_files": [
+    "src/builtins/builtins-lazy-gen.cc",
+    "src/codegen/x64/macro-assembler-x64.cc"
+  ]
+}

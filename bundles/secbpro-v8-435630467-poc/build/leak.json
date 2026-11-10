@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "269d7c0f238a38e272f19f98a217989524c9f799"
+  ],
+  "target_files": [
+    "src/builtins/builtins-internal-gen.cc"
+  ]
+}

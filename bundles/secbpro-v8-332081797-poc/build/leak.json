@@ -1,0 +1,10 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "cf03d55db2a0b7c5ff62e08ff5ad52312f6da0b4"
+  ],
+  "target_files": [
+    "src/wasm/constant-expression-interface.cc",
+    "src/wasm/baseline/liftoff-compiler.cc"
+  ]
+}

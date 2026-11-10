@@ -1,0 +1,11 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "6d17e93756e8",
+    "1f75ae1cc019"
+  ],
+  "target_files": [
+    "js/src/jit/BaselineCacheIRCompiler.cpp",
+    "js/src/jit/JitScript.cpp"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "4d8f79a7f783a61ec5327c8af7fbd42572b55ca2"
+  ],
+  "target_files": [
+    "src/objects/value-serializer.cc"
+  ]
+}

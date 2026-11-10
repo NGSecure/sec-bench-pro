@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "8c815e898fe13f9ed436825a77399561597cd708"
+  ],
+  "target_files": [
+    "src/objects/string-inl.h"
+  ]
+}

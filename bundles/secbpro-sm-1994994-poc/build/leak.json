@@ -1,0 +1,12 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "866e7aa6a080"
+  ],
+  "target_files": [
+    "js/src/irregexp/imported/regexp-bytecode-generator.cc",
+    "js/src/irregexp/imported/regexp-compiler.cc",
+    "js/src/irregexp/imported/regexp-compiler.h",
+    "js/src/irregexp/imported/regexp-macro-assembler.cc"
+  ]
+}

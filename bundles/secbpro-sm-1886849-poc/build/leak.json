@@ -1,0 +1,10 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "81806e7ccec7dde41e37c9891592a6e39ce46380"
+  ],
+  "target_files": [
+    "js/src/jit/RangeAnalysis.cpp",
+    "js/src/jit/MIROps.yaml"
+  ]
+}

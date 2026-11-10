@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "b371b4f8ba073fb5c054273e8909bee5de574b35"
+  ],
+  "target_files": [
+    "src/interpreter/bytecode-generator.cc"
+  ]
+}

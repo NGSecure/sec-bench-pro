@@ -1,0 +1,10 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "5942a14103720910a8c6a0aebc67f4314dd8fdd9"
+  ],
+  "target_files": [
+    "src/wasm/wasm-objects.tq",
+    "src/compiler/wasm-compiler.cc"
+  ]
+}

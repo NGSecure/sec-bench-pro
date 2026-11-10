@@ -1,0 +1,11 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "84a0e230dabc2c874a129c2280d6be4f45636225"
+  ],
+  "target_files": [
+    "src/wasm/wrappers.cc",
+    "src/compiler/turboshaft/operations.h",
+    "src/compiler/backend/instruction-selector.cc"
+  ]
+}

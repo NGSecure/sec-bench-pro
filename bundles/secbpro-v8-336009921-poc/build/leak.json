@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "e25efe6cf28b8a7dfc6de89ac16fd2a77f5e281d"
+  ],
+  "target_files": [
+    "src/wasm/wrappers.cc"
+  ]
+}

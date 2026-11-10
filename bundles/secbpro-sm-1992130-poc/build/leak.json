@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "75ef3f79aae344c1d0398787cab666a6a73176c7"
+  ],
+  "target_files": [
+    "js/src/wasm/WasmGcObject.h"
+  ]
+}

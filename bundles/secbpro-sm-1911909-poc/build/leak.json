@@ -1,0 +1,11 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "7a57964c63f520aef9d0c46731d94fd55680e81f"
+  ],
+  "target_files": [
+    "js/src/wasm/WasmTypeDef.h",
+    "js/src/wasm/WasmTypeDef.cpp",
+    "js/src/wasm/WasmValidate.cpp"
+  ]
+}

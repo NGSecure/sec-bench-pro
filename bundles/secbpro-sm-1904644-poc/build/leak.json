@@ -1,0 +1,15 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "b44f14fb5cc6",
+    "ceb01a751fde"
+  ],
+  "target_files": [
+    "js/src/jit/JitFrames.cpp",
+    "js/src/jit/x64/MacroAssembler-x64.cpp",
+    "js/src/wasm/WasmBuiltins.cpp",
+    "js/src/wasm/WasmBuiltins.h",
+    "js/src/wasm/WasmStubs.cpp",
+    "js/src/wasm/WasmStubs.h"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "9542895cdd3dbd97da3d9032ddb36fd4feb612e4",
+    "10cf92abc256d6f918accc819b3468a04724a287"
+  ],
+  "target_files": [
+    "src/wasm/streaming-decoder.cc"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "89ab7b1efb333b85f5669b10659b8b4abf14bb9b"
+  ],
+  "target_files": [
+    "src/compiler/backend/x64/instruction-selector-x64.cc"
+  ]
+}

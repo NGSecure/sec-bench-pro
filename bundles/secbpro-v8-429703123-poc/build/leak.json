@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "ebf22f9a925a45549a6124158ad935d624e7bf8f"
+  ],
+  "target_files": [
+    "src/builtins/x64/builtins-x64.cc"
+  ]
+}

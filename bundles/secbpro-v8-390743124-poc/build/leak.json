@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "b75e527fb521dca5e7621928846c0c7c6becc8dd"
+  ],
+  "target_files": [
+    "src/compiler/escape-analysis.cc"
+  ]
+}

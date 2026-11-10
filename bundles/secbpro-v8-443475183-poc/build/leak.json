@@ -1,0 +1,11 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "8398f9aa445af42c44d52a771e2fd3a9605b3573",
+    "1bce72c8b127a02fba5d51cfbd8baa3aa40eb6ef"
+  ],
+  "target_files": [
+    "third_party/partition_alloc/src/partition_alloc/partition_page.h",
+    "src/init/isolate-group.cc"
+  ]
+}

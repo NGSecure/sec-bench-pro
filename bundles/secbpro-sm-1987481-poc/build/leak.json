@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "4e0b3249af9b343c82cb8bd1f5f2db3ed5f6ef0b"
+  ],
+  "target_files": [
+    "js/src/jit/MIROps.yaml"
+  ]
+}

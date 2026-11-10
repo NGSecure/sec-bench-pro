@@ -1,0 +1,10 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "02d0fc9fbda0c8a06f2e71ab2bacaa85560510a9"
+  ],
+  "target_files": [
+    "third_party/v8/builtins/array-sort.tq",
+    "src/torque/csa-generator.cc"
+  ]
+}

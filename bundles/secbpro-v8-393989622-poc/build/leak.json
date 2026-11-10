@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "d30b7b0bb3829f2e220df403ed461a1ede78b774"
+  ],
+  "target_files": [
+    "src/objects/intl-objects.cc"
+  ]
+}

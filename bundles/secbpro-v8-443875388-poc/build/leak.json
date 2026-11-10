@@ -1,0 +1,10 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "a5f18bb86c3b97b9bfc8f95a0926812a1282ad7c"
+  ],
+  "target_files": [
+    "src/codegen/handler-table.h",
+    "src/codegen/handler-table.cc"
+  ]
+}

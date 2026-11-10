@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "62ea7950e9268e5b58d1dc6e4de6016ab719e11f"
+  ],
+  "target_files": [
+    "js/src/vm/Modules.cpp"
+  ]
+}

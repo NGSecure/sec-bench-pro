@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "15a72141745c7c66baf0a776ec88177424b0172e"
+  ],
+  "target_files": [
+    "src/compiler/heap-refs.cc"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "792c326e896020f74533e0d7b629b9a1b35e555a"
+  ],
+  "target_files": [
+    "src/objects/js-atomics-synchronization.cc"
+  ]
+}

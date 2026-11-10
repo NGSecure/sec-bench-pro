@@ -1,0 +1,10 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "38358a9bcbf4"
+  ],
+  "target_files": [
+    "js/src/jit/IonBuilder.cpp",
+    "js/src/jit/IonIC.cpp"
+  ]
+}

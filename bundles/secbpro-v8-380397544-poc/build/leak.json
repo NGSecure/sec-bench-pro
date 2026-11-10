@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "0f2e4bf2b22ee367a02c9bc6b7ab26a1f4411f5d"
+  ],
+  "target_files": [
+    "src/wasm/canonical-types.h"
+  ]
+}

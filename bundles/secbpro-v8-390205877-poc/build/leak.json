@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "3517e6ced4eddbe54c1d468c91622494190984cc"
+  ],
+  "target_files": [
+    "src/execution/tiering-manager.cc"
+  ]
+}

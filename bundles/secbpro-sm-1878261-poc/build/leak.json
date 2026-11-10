@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "dcc38792dc66"
+  ],
+  "target_files": [
+    "js/src/jit/JitFrames.cpp"
+  ]
+}

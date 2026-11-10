@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "47c50e8013d9061ca113e66514568debc4dfb133"
+  ],
+  "target_files": [
+    "src/heap/base/basic-slot-set.h"
+  ]
+}

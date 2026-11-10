@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "7233c12030b8"
+  ],
+  "target_files": [
+    "js/src/jit/CacheIR.cpp"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "5432788739532336e444d0f4dbe88c6941f54f60"
+  ],
+  "target_files": [
+    "js/src/proxy/CrossCompartmentWrapper.cpp",
+    "js/src/proxy/DeadObjectProxy.cpp",
+    "js/src/proxy/DeadObjectProxy.h",
+    "js/src/vm/Compartment.cpp",
+    "js/src/vm/JSObject.cpp",
+    "js/src/vm/JSObject.h"
+  ]
+}

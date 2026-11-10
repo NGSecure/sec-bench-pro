@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "d867a6f69b9f026674f2e846572748818a61a41b"
+  ],
+  "target_files": [
+    "js/src/wasm/WasmBaselineCompile.cpp"
+  ]
+}

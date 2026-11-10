@@ -1,0 +1,13 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "a05bddc2ecd5"
+  ],
+  "target_files": [
+    "js/public/GCHashTable.h",
+    "js/public/GCVector.h",
+    "js/public/SweepingAPI.h",
+    "js/src/gc/Sweeping.cpp",
+    "js/src/vm/ArrayBufferObject.h"
+  ]
+}

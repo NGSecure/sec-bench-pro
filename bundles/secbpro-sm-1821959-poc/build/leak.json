@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "abeb53ae551913d99778601be86b1ff1b195420c"
+  ],
+  "target_files": [
+    "js/src/vm/JSObject.cpp"
+  ]
+}

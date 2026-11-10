@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "3450c044be862b04778daa8a3535efb3782255e1"
+  ],
+  "target_files": [
+    "js/src/jit/MacroAssembler.cpp"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "2414b1c31a87d40de79acfcd2a3b0c068f27442e"
+  ],
+  "target_files": [
+    "src/maglev/maglev-ir.h"
+  ]
+}

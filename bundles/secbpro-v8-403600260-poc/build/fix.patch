@@ -1,0 +1,38 @@
+diff --git a/src/maglev/maglev-graph-builder.cc b/src/maglev/maglev-graph-builder.cc
+index c423fc22702..e0a249265e8 100644
+--- a/src/maglev/maglev-graph-builder.cc
++++ b/src/maglev/maglev-graph-builder.cc
+@@ -11650,6 +11650,9 @@ ReduceResult MaglevGraphBuilder::BuildAndAllocateJSArray(
+     array->set(map.GetInObjectPropertyOffset(i),
+                GetRootConstant(RootIndex::kUndefinedValue));
+   }
++  array->ClearSlots(map.GetInObjectPropertyOffset(
++                        slack_tracking_prediction.inobject_property_count()),
++                    GetRootConstant(RootIndex::kOnePointerFillerMap));
+   ValueNode* allocation = BuildInlinedAllocation(array, allocation_type);
+   return allocation;
+ }
+@@ -11702,6 +11705,10 @@ MaybeReduceResult MaglevGraphBuilder::TryBuildAndAllocateJSGeneratorObject(
+        i++) {
+     generator->set(initial_map.GetInObjectPropertyOffset(i), undefined);
+   }
++  generator->ClearSlots(
++      initial_map.GetInObjectPropertyOffset(
++          slack_tracking_prediction.inobject_property_count()),
++      GetRootConstant(RootIndex::kOnePointerFillerMap));
+ 
+   ValueNode* allocation =
+       BuildInlinedAllocation(generator, AllocationType::kYoung);
+diff --git a/src/maglev/maglev-graph-builder.cc b/src/maglev/maglev-graph-builder.cc
+index 710e56e9fe7..60ca7c84b9c 100644
+--- a/src/maglev/maglev-graph-builder.cc
++++ b/src/maglev/maglev-graph-builder.cc
+@@ -12939,6 +12939,8 @@ VirtualObject* MaglevGraphBuilder::CreateVirtualObject(
+   ValueNode** slots = zone()->AllocateArray<ValueNode*>(slot_count);
+   VirtualObject* vobject = NodeBase::New<VirtualObject>(
+       zone(), 0, map, NewObjectId(), slot_count, slots);
++  std::fill_n(slots, slot_count,
++              GetRootConstant(RootIndex::kOnePointerFillerMap));
+   return vobject;
+ }
+ 

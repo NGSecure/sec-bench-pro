@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "aa2cbd9e4ed70238694e07f1c525941aa1e04429"
+  ],
+  "target_files": [
+    "src/builtins/js-to-wasm.tq"
+  ]
+}

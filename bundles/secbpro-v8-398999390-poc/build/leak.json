@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "8db16e651ff456e0eea6e576045623d2039a1d34"
+  ],
+  "target_files": [
+    "src/json/json-stringifier.cc"
+  ]
+}

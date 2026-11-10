@@ -1,0 +1,12 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "4cd3dc8813f171cb6a8cb41088fd97eaa5909249"
+  ],
+  "target_files": [
+    "js/src/gc/GC.cpp",
+    "js/src/vm/Realm-inl.h",
+    "js/src/vm/Realm.cpp",
+    "js/src/vm/Realm.h"
+  ]
+}

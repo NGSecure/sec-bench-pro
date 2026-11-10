@@ -1,0 +1,9 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "b93975a48c722c2e5fe9b39437738eb2e23dac74"
+  ],
+  "target_files": [
+    "src/objects/objects-body-descriptors-inl.h"
+  ]
+}
