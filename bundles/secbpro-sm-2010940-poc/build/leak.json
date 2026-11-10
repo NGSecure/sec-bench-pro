@@ -8,5 +8,8 @@
     "js/src/builtin/FinalizationRegistryObject.cpp",
     "js/src/builtin/FinalizationRegistryObject.h",
     "js/src/gc/FinalizationObservers.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

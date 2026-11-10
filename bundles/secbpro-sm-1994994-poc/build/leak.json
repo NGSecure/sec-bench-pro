@@ -8,5 +8,8 @@
     "js/src/irregexp/imported/regexp-compiler.cc",
     "js/src/irregexp/imported/regexp-compiler.h",
     "js/src/irregexp/imported/regexp-macro-assembler.cc"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

@@ -6,5 +6,9 @@
   "target_files": [
     "src/sandbox/code-entrypoint-tag.h",
     "src/sandbox/js-dispatch-table-inl.h"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js"
   ]
 }

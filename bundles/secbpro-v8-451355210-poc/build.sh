@@ -25,16 +25,21 @@ TS_TAG="secbpro_v8_451355210_task_server:${VER}"
 TS_CPUS="${TS_CPUS:-2}"
 TS_MEMORY="${TS_MEMORY:-8192M}"
 
-# Echo a local reference for the image: as given if present or pullable, else the same
-# digest from Google's Docker Hub mirror (not subject to the anonymous pull limit).
+# Echo a local reference for the image: as given if present or pullable (3 tries, for
+# transient registry or credential-helper errors), else the same digest from Google's
+# Docker Hub mirror. Fails, and so stops this script, if neither can be pulled.
 resolve() {
-  local ref="$1"
+  local ref="$1" i
   if docker image inspect "$ref" >/dev/null 2>&1; then echo "$ref"; return; fi
-  if docker pull "$ref" >&2; then echo "$ref"; return; fi
+  for i in 1 2 3; do
+    if docker pull "$ref" >&2; then echo "$ref"; return; fi
+    if [ "$i" -lt 3 ]; then echo "    pull failed (try $i of 3); retrying" >&2; sleep $((i * 15)); fi
+  done
   local m="mirror.gcr.io/${ref#docker.io/}"
   echo "    Docker Hub pull failed; trying $m" >&2
-  docker pull "$m" >&2
-  echo "$m"
+  if docker pull "$m" >&2; then echo "$m"; return; fi
+  echo "ERROR: could not pull $ref from Docker Hub or from $m" >&2
+  return 1
 }
 
 echo "==> base images"

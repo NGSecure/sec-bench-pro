@@ -9,5 +9,8 @@
     "js/src/wasm/WasmIonCompile.cpp",
     "js/src/wasm/WasmValType.cpp",
     "js/src/wasm/WasmValidate.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

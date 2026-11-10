@@ -7,5 +7,9 @@
   "target_files": [
     "third_party/partition_alloc/src/partition_alloc/partition_page.h",
     "src/init/isolate-group.cc"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js"
   ]
 }

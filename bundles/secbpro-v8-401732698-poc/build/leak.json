@@ -7,5 +7,9 @@
     "src/common/ptr-compr-inl.h",
     "src/common/ptr-compr.h",
     "src/objects/tagged-field-inl.h"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js"
   ]
 }

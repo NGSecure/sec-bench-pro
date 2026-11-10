@@ -12,5 +12,8 @@
     "js/src/vm/AsyncIteration.cpp",
     "js/src/vm/AsyncIteration.h",
     "js/src/vm/List-inl.h"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

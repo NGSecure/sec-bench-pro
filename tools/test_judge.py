@@ -15,6 +15,7 @@ import ast
 import json
 import os
 import random
+import shutil
 import signal
 import socket
 import sys
@@ -313,12 +314,76 @@ def test_seccomp():
     check("null read -> SIGSEGV", os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGSEGV, status)
 
 
+def test_leak_check_libraries():
+    """build/leak_check.py check 2: lines a PoC pastes in from a shared harness library are
+    not its own; what remains must not be mostly in any one file."""
+    sys.path.insert(0, os.path.join(HERE, os.pardir, "templates", "build"))
+    import leak_check as lc
+    root = tempfile.mkdtemp(prefix="secb_leak_")
+    lib_lines = ["  builder.helperFunctionNumber%03d(argument, other);" % i for i in range(100)]
+    own = ["let trigger_specific_value_%02d = makeTheBugHappen(%d);" % (i, i) for i in range(10)]
+
+    def put(rel, lines):
+        p = os.path.join(root, rel)
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w") as f:
+            f.write("\n".join(lines) + "\n")
+        return p
+
+    lib = put("test/lib/builder.js", ["// library"] + lib_lines)
+    put("test/other.js", own[:2] + ["unrelated line that is long enough to count"])
+    gt = [l.strip() for l in lib_lines + own]
+    fails, notes, rep = lc.reference_poc_check(gt, [root])
+    check("leak: pasted library alone -> FAIL without the library rule", bool(fails), (fails, rep))
+    fails, notes, rep = lc.reference_poc_check(gt, [root], [lib])
+    check("leak: pasted library -> PASS with the library rule", not fails, (fails, rep))
+    check("leak: own lines counted", rep.get("reference_poc_own_lines") == 10
+          and rep.get("reference_poc_library_lines") == 100, rep)
+    regress = put("test/regress/regress-1.js", ["load('test/lib/builder.js');"] + own[:8])
+    fails, notes, rep = lc.reference_poc_check(gt, [root], [lib])
+    check("leak: own lines in another file -> FAIL", bool(fails) and regress in fails[0], (fails, rep))
+    os.unlink(regress)
+    fails, notes, rep = lc.reference_poc_check([l.strip() for l in lib_lines] + own[:2], [root], [lib])
+    check("leak: PoC almost all library -> NOTE, not FAIL", not fails and any("too short" in n for n in notes),
+          (fails, notes))
+    shutil.rmtree(root)
+
+
+def test_probe_interpreter_modes():
+    """task_server.open_for_others()/restore_modes(): what the isolation probe opens for its
+    interpreter, and that every mode comes back."""
+    root = tempfile.mkdtemp(prefix="secb_modes_")
+    d1, sp, f1, f2, g = (os.path.join(root, *p) for p in (("lib",), ("lib", "site-packages"),
+                                                          ("lib", "os.py"), ("lib", "site-packages", "x.py"),
+                                                          ("python3",)))
+    os.makedirs(sp)
+    for p in (f1, f2, g):
+        open(p, "w").close()
+    modes = {d1: 0o700, sp: 0o700, f1: 0o600, f2: 0o600, g: 0o700}
+    for p, m in modes.items():
+        os.chmod(p, m)
+    changed = ts.open_for_others([(g, 0o001)], [d1])
+    now = {p: os.stat(p).st_mode & 0o7777 for p in modes}
+    check("probe modes: tree opened, site-packages left", now == {d1: 0o705, sp: 0o700, f1: 0o604, f2: 0o600,
+                                                                    g: 0o701}, now)
+    ts.restore_modes(changed)
+    back = {p: os.stat(p).st_mode & 0o7777 for p in modes}
+    check("probe modes: restored", back == modes, back)
+    grants, trees = ts._probe_interpreter_grants()
+    import sysconfig
+    check("probe modes: interpreter and stdlib covered",
+          (os.path.realpath(sys.executable), 0o001) in grants
+          and os.path.realpath(sysconfig.get_path("stdlib")) in trees, (grants[-3:], trees))
+    shutil.rmtree(root)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--upstream", help="SEC-bench Pro checkout (compares the comment stripper)")
     a = ap.parse_args()
     for t in (test_classify, test_fixed_clean, test_verify, test_validate,
-              lambda: test_strip(a.upstream), test_seccomp):
+              lambda: test_strip(a.upstream), test_seccomp, test_leak_check_libraries,
+              test_probe_interpreter_modes):
         t()
     os.unlink(_cfg.name)
     print("%d checks, %d failed" % (COUNT[0], len(FAILS)))

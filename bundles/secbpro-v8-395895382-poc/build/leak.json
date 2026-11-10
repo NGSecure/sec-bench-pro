@@ -5,5 +5,9 @@
   ],
   "target_files": [
     "src/compiler/js-call-reducer.cc"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js"
   ]
 }

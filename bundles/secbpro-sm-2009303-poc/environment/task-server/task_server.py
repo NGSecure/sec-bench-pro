@@ -825,17 +825,88 @@ print("SECB_PROBE " + json.dumps(res))
 """
 
 
+def open_for_others(grants, tree_roots=()):
+    """Add the "other" permission bits of each (path, bits) in `grants`, and o+r (o+rx for
+    directories) to everything under `tree_roots`, skipping symlinks and site-packages.
+    Returns the (path, old mode) pairs that changed, for restore_modes()."""
+    changed = []
+
+    def add(path, bits):
+        try:
+            st = os.lstat(path)
+        except OSError:
+            return
+        if (st.st_mode & 0o170000) == 0o120000:          # symlink
+            return
+        mode = st.st_mode & 0o7777
+        if mode & bits != bits:
+            os.chmod(path, mode | bits)
+            changed.append((path, mode))
+
+    for p, bits in grants:
+        add(p, bits)
+    for top in tree_roots:
+        for dp, dns, fns in os.walk(top):
+            dns[:] = [d for d in dns if d not in ("site-packages", "dist-packages")]
+            add(dp, 0o005)
+            for fn in fns:
+                add(os.path.join(dp, fn), 0o004)
+    return changed
+
+
+def restore_modes(changed):
+    for path, mode in reversed(changed):
+        try:
+            os.chmod(path, mode)
+        except OSError:
+            pass
+
+
+def _probe_interpreter_grants():
+    """What the probe's `python3 -I -S` needs as the run uid: to execute the interpreter,
+    read libpython and its stdlib (with lib-dynload), and pass through the directories
+    above them. Returns (grants, trees) for open_for_others()."""
+    import sysconfig
+    trees, grants = [], [(os.path.realpath(sys.executable), 0o001)]
+    for key in ("stdlib", "platstdlib"):
+        p = sysconfig.get_path(key)
+        if p and os.path.isdir(p) and os.path.realpath(p) not in trees:
+            trees.append(os.path.realpath(p))
+    lib = os.path.join(sysconfig.get_config_var("LIBDIR") or "", sysconfig.get_config_var("LDLIBRARY") or "")
+    if os.path.isfile(lib):
+        grants.append((os.path.realpath(lib), 0o004))
+    above = []
+    for p in trees + [g[0] for g in grants] + [os.path.abspath(sys.executable)]:
+        d = os.path.dirname(p)
+        while d not in ("/", "") and d not in above:
+            above.append(d)
+            d = os.path.dirname(d)
+    return [(d, 0o001) for d in above] + grants, trees
+
+
 def isolation_probe():
     exe = STATE["exe"]
     script = PROBE % {"read": [CONFIG_PATH, GROUND_TRUTH, STATE_PATH, exe],
                       "list": [STORE, OUT_DIR],
                       "write": [WORK_DIR, POC_DIR, os.path.dirname(exe), "/out", "/src", "/work"],
                       "exe": exe}
-    r = run_once("vul", b"", argv_tail=[sys.executable, "-I", "-S", "-c", script])
+    # The probe is a Python script run as the run uid. Some images install Python with
+    # root-only modes, and the run uid then cannot start the interpreter at all. The probe
+    # measures the judge's files, the store, the work tree and the seccomp filter, none of
+    # which is the interpreter, so for this one run its files are opened to other users;
+    # the modes are restored right after. --selfcheck runs in a throwaway container, and
+    # the server never runs this probe.
+    grants, trees = _probe_interpreter_grants()
+    opened = open_for_others(grants, trees)
+    try:
+        r = run_once("vul", b"", argv_tail=[sys.executable, "-I", "-S", "-c", script])
+    finally:
+        restore_modes(opened)
     m = re.search(r"^SECB_PROBE (.*)$", r["stdout"], re.M)
     if not m:
         return {"error": "probe produced no result", "status": r["status"], "signal": r["signal"],
-                "stderr": r["stderr"][-2000:]}
+                "stderr": r["stderr"][-2000:], "interpreter": sys.executable,
+                "interpreter_paths_opened": len(opened)}
     res = json.loads(m.group(1))
     bad = [k for k, v in res.items() if v == "allowed" and k.startswith(
         ("read ", "list ", "write ", "fork", "kill ", "tgkill ", "socket AF_INET"))]
@@ -846,7 +917,10 @@ def isolation_probe():
     caps = res.get("caps", {})
     if int(caps.get("CapEff", "1"), 16) or int(caps.get("CapPrm", "1"), 16):
         bad.append("the run must hold no capabilities after execve: %s" % caps)
-    return {"results": res, "violations": bad}
+    out = {"results": res, "violations": bad}
+    if opened:
+        out["interpreter_paths_opened_for_probe"] = len(opened)
+    return out
 
 
 # The engine itself, run like a PoC: it must not be able to read its own binary or

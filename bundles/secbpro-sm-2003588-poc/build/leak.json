@@ -5,5 +5,8 @@
   ],
   "target_files": [
     "js/src/proxy/CrossCompartmentWrapper.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

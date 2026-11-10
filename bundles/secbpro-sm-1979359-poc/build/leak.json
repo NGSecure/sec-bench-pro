@@ -6,5 +6,8 @@
   "target_files": [
     "js/src/ds/Bitmap.h",
     "js/src/gc/AtomMarking-inl.h"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

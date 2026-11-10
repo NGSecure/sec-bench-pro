@@ -9,5 +9,8 @@
     "js/public/SweepingAPI.h",
     "js/src/gc/Sweeping.cpp",
     "js/src/vm/ArrayBufferObject.h"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

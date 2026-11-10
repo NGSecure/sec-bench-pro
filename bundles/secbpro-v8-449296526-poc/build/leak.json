@@ -6,5 +6,9 @@
   "target_files": [
     "src/objects/string.cc",
     "src/objects/script.cc"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js"
   ]
 }

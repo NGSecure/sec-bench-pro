@@ -7,5 +7,9 @@
   "target_files": [
     "src/heap/large-spaces.cc",
     "src/heap/page-pool.cc"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js"
   ]
 }

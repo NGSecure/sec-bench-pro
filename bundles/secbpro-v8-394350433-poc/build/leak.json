@@ -7,5 +7,9 @@
     "src/wasm/wrappers.cc",
     "src/compiler/turboshaft/operations.h",
     "src/compiler/backend/instruction-selector.cc"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js"
   ]
 }

@@ -14,5 +14,8 @@
     "js/src/wasm/WasmTable.h",
     "js/src/wasm/WasmTypeDef.h",
     "js/src/wasm/WasmValType.h"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

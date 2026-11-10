@@ -10,5 +10,8 @@
     "js/src/vm/Compartment.cpp",
     "js/src/vm/JSObject.cpp",
     "js/src/vm/JSObject.h"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

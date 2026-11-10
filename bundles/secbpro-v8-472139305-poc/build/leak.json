@@ -5,5 +5,9 @@
   ],
   "target_files": [
     "src/objects/js-number-format.cc"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js"
   ]
 }

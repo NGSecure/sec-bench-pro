@@ -5,5 +5,8 @@
   ],
   "target_files": [
     "js/src/gc/GC.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

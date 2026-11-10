@@ -11,5 +11,8 @@
     "js/src/vm/Interpreter-inl.h",
     "js/src/vm/Interpreter.cpp",
     "js/src/vm/EnvironmentObject.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

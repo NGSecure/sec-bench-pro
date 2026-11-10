@@ -7,5 +7,8 @@
     "js/src/gc/Barrier.h",
     "js/src/gc/WeakMap-inl.h",
     "js/src/gc/WeakMap.h"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

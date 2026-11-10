@@ -11,5 +11,8 @@
     "js/src/wasm/WasmBuiltins.h",
     "js/src/wasm/WasmStubs.cpp",
     "js/src/wasm/WasmStubs.h"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

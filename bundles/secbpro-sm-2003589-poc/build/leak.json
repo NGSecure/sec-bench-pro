@@ -9,5 +9,8 @@
     "js/src/jit/VMFunctionList-inl.h",
     "js/src/vm/Iteration.cpp",
     "js/src/vm/Iteration.h"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

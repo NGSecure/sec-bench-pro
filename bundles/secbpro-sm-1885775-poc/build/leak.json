@@ -6,5 +6,8 @@
   ],
   "target_files": [
     "js/src/gc/WeakMap-inl.h"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

@@ -6,5 +6,9 @@
   "target_files": [
     "src/asmjs/asm-parser.cc",
     "src/wasm/function-body-decoder-impl.h"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js"
   ]
 }

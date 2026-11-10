@@ -7,5 +7,8 @@
     "js/src/wasm/WasmTypeDef.h",
     "js/src/wasm/WasmTypeDef.cpp",
     "js/src/wasm/WasmValidate.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

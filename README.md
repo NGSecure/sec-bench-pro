@@ -73,7 +73,7 @@ task-server(判定)  = 上游漏洞版镜像 + 修复版的运行时文件(引�
 6. 运行环境变量取构建时记录的镜像 ENV;平台注入给 task-server 的变量(包括 AUTH_TOKEN)不会进入引擎。
 7. 判定配置、参考 PoC、两个版本的副本都只有 root 可读。
 
-**每题 `build.sh` 的自检实际验证上述措施**:隔离探针(读判定文件、写工作目录、fork、自发故障信号、AF_INET 全部被拒,运行时能力为 0);引擎探针(引擎读不到自身和判定文件,且仍可 dump);参考 PoC 通过;用漏洞版冒充修复版时参考 PoC 不通过;全部负对照不通过(空文件、抛异常、伪造全部标记后 `quit(134)` / `quit(1)`、V8 沙箱内的 harmless 越界写)。
+**每题 `build.sh` 的自检实际验证上述措施**:隔离探针(读判定文件、写工作目录、fork、自发故障信号、AF_INET 全部被拒,运行时能力为 0;探针本身是 Python 脚本,有的镜像把 Python 装成仅 root 可读,探针运行期间临时给其他用户开放解释器与标准库的读、执行权限,结束即恢复,且只在一次性的自检容器里发生,服务器从不运行探针);引擎探针(引擎读不到自身和判定文件,且仍可 dump);参考 PoC 通过;用漏洞版冒充修复版时参考 PoC 不通过;全部负对照不通过(空文件、抛异常、伪造全部标记后 `quit(134)` / `quit(1)`、V8 沙箱内的 harmless 越界写)。
 
 ## 5. 残余风险与取舍
 
@@ -90,7 +90,7 @@ task-server(判定)  = 上游漏洞版镜像 + 修复版的运行时文件(引�
 
 ```bash
 git clone -b claude/project-thread-l7t0hu https://github.com/NGSecure/sec-bench-pro.git && cd sec-bench-pro
-docker login        # 建议登录 Docker Hub(匿名拉取有频率限制);拉取失败时 build.sh 自动改用 mirror.gcr.io 的同一 digest
+docker login        # 建议登录 Docker Hub(匿名拉取有频率限制);拉取失败时 build.sh 重试 3 次,再改用 mirror.gcr.io 的同一 digest,仍失败则报错退出
 
 # 阶段 1(公网):拉取固定 digest 的上游镜像,构建两个镜像,运行泄漏检查与参考 PoC 自检
 bash bundles/secbpro-v8-472139305-poc/build.sh       # 以 "==> PASS" 结束
@@ -117,6 +117,8 @@ bash bundles/secbpro-sm-2009303-poc/push.sh
 准备好 `NEWPLATFORM_DIR` 后不要再在其中单独运行 `uv sync`:它做精确同步,会删掉未声明的 cwm;push.sh 使用的 `uv run` 不会删。误删时重跑上面的 `uv pip install` 即可。缺少 cwm 时 push.sh 在推送前报错退出,并给出安装命令。
 
 `build.sh` 结束后修复版镜像不再需要,可以 `docker rmi` 释放空间(`tools/batch.sh` 会自动做)。真实镜像带完整源码树和 git,泄漏检查会额外验证:修复补丁可正向应用、不可反向应用,修复提交不在仓库中,历史只有一个提交。
+
+泄漏检查比对参考 PoC 时,先扣除它与公开测试库共有的行(V8:`test/mjsunit/mjsunit.js`、`test/mjsunit/wasm/wasm-module-builder.js`;SpiderMonkey:`js/src/jit-test/lib/*.js`,见各题 `build/leak.json` 的 `shared_libraries`)。这些库在漏洞版本的每份检出里都有,103 道 V8 题中有 16 道的 PoC 整份内联了 `wasm-module-builder.js`;不扣除会把库本身误判为参考 PoC 泄漏。PoC 自身的行仍按原阈值判定(任一文件含其半数以上即 FAIL)。这条规则只改变判定,不改变镜像内容。
 
 ## 7. 批量(全部 207 题)
 

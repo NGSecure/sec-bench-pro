@@ -8,5 +8,8 @@
     "js/src/vm/Realm-inl.h",
     "js/src/vm/Realm.cpp",
     "js/src/vm/Realm.h"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

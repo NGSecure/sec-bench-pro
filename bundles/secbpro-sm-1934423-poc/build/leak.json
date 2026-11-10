@@ -6,5 +6,8 @@
   "target_files": [
     "js/src/jit/BaselineCodeGen.cpp",
     "js/src/jit/CodeGenerator.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

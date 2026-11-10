@@ -6,5 +6,9 @@
   "target_files": [
     "src/maglev/maglev-ir.cc",
     "src/builtins/js-trampoline-assembler.cc"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js"
   ]
 }

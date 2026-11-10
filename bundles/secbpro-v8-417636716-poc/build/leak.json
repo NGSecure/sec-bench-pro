@@ -6,5 +6,9 @@
   "target_files": [
     "src/builtins/builtins-lazy-gen.cc",
     "src/codegen/x64/macro-assembler-x64.cc"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js"
   ]
 }

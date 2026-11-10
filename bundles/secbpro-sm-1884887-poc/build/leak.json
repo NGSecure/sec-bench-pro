@@ -10,5 +10,8 @@
     "js/src/wasm/WasmJS.h",
     "js/src/wasm/WasmModule.cpp",
     "js/src/wasm/WasmValue.h"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

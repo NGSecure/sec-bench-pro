@@ -6,5 +6,8 @@
   ],
   "target_files": [
     "js/src/vm/JSObject.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

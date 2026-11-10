@@ -12,5 +12,8 @@
     "js/src/jit/RematerializedFrame.cpp",
     "js/src/vm/FrameIter-inl.h",
     "js/src/vm/ArgumentsObject.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

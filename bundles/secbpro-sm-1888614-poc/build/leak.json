@@ -8,5 +8,8 @@
     "js/src/jit/JSJitFrameIter.h",
     "js/src/jit/JitFrames.cpp",
     "js/src/vm/FrameIter.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

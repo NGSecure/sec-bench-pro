@@ -5,5 +5,8 @@
   ],
   "target_files": [
     "js/src/vm/Modules.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

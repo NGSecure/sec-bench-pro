@@ -9,5 +9,8 @@
     "js/src/jit/LIROps.yaml",
     "js/src/jit/ScalarReplacement.cpp",
     "js/src/jit/WarpCacheIRTranspiler.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

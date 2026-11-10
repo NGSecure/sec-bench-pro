@@ -6,5 +6,9 @@
   "target_files": [
     "src/objects/backing-store.h",
     "src/wasm/wasm-js.cc"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js"
   ]
 }

@@ -7,5 +7,8 @@
     "js/src/jit/CodeGenerator.cpp",
     "js/src/jit/LIROps.yaml",
     "js/src/jit/Lowering.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }

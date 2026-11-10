@@ -114,6 +114,15 @@ def existing_token(bundle):
     return None
 
 
+# Public test-harness libraries that reference PoCs paste in whole to run standalone
+# (16 of the 103 V8 PoCs carry all of wasm-module-builder.js). The leak check does not
+# count their lines as the PoC's own; paths are globs relative to the work dir.
+SHARED_LIBRARIES = {
+    "v8": ["test/mjsunit/mjsunit.js", "test/mjsunit/wasm/wasm-module-builder.js"],
+    "sm": ["js/src/jit-test/lib/*.js"],
+}
+
+
 def fix_commits(meta):
     out = list(meta.get("fix_commits") or [])
     for f in meta.get("fixes") or []:
@@ -226,7 +235,8 @@ def make(upstream, project, iid, out_root, digests, upstream_commit):
 
     shutil.copyfile(idir / "poc.js", bundle / "build/ground_truth.js")
     (bundle / "build/fix.patch").write_text("".join(p.read_text() for p in patches))
-    leak = {"work_dir": work_dir, "fix_commits": fix_commits(meta), "target_files": targets}
+    leak = {"work_dir": work_dir, "fix_commits": fix_commits(meta), "target_files": targets,
+            "shared_libraries": SHARED_LIBRARIES[project]}
     (bundle / "build/leak.json").write_text(json.dumps(leak, indent=2) + "\n")
     groups = ["common", project]
     if project == "v8" and re.search(r"--sandbox-(testing|fuzzing)\b", options):

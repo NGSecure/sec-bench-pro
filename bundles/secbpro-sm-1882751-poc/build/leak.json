@@ -6,5 +6,8 @@
   "target_files": [
     "js/src/jit/MacroAssembler.cpp",
     "js/src/wasm/WasmGcObject.h"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
   ]
 }
