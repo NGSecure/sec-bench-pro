@@ -73,7 +73,7 @@ task-server(判定)  = 上游漏洞版镜像 + 修复版的运行时文件(引�
 6. 运行环境变量取构建时记录的镜像 ENV;平台注入给 task-server 的变量(包括 AUTH_TOKEN)不会进入引擎。
 7. 判定配置、参考 PoC、两个版本的副本都只有 root 可读。
 
-**每题 `build.sh` 的自检实际验证上述措施**:隔离探针(读判定文件、写工作目录、fork、自发故障信号、AF_INET 全部被拒,运行时能力为 0;探针本身是 Python 脚本,有的镜像把 Python 装成仅 root 可读,探针运行期间临时给其他用户开放解释器与标准库的读、执行权限,结束即恢复,且只在一次性的自检容器里发生,服务器从不运行探针);引擎探针(引擎读不到自身和判定文件,且仍可 dump);参考 PoC 通过;用漏洞版冒充修复版时参考 PoC 不通过;全部负对照不通过(空文件、抛异常、伪造全部标记后 `quit(134)` / `quit(1)`、V8 沙箱内的 harmless 越界写)。
+**每题 `build.sh` 的自检实际验证上述措施**:隔离探针(读判定文件、写工作目录、fork、自发故障信号、AF_INET 全部被拒,运行时能力为 0;探针本身是 Python 脚本,有的镜像把 Python 装成仅 root 可读,探针运行期间临时给其他用户开放解释器与标准库的读、执行权限,结束即恢复,且只在一次性的自检容器里发生,服务器从不运行探针);引擎探针(引擎读不到自身和判定文件,且仍可 dump);参考 PoC 通过;用漏洞版冒充修复版时参考 PoC 不通过(有些目标是竞态,参考 PoC 一轮判定可能偶然复现不了,自检对这两项各给最多 10 轮判定,成立一次即可;判分本身不变,仍是每个版本最多 3 次);全部负对照不通过(空文件、抛异常、伪造全部标记后 `quit(134)` / `quit(1)`、V8 沙箱内的 harmless 越界写)。
 
 ## 5. 残余风险与取舍
 
@@ -118,7 +118,7 @@ bash bundles/secbpro-sm-2009303-poc/push.sh
 
 `build.sh` 结束后修复版镜像不再需要,可以 `docker rmi` 释放空间(`tools/batch.sh` 会自动做)。真实镜像带完整源码树和 git,泄漏检查会额外验证:修复补丁可正向应用、不可反向应用,修复提交不在仓库中,历史只有一个提交。
 
-泄漏检查比对参考 PoC 时,先扣除它与公开测试库共有的行(V8:`test/mjsunit/mjsunit.js`、`test/mjsunit/wasm/wasm-module-builder.js`;SpiderMonkey:`js/src/jit-test/lib/*.js`,见各题 `build/leak.json` 的 `shared_libraries`)。这些库在漏洞版本的每份检出里都有,103 道 V8 题中有 16 道的 PoC 整份内联了 `wasm-module-builder.js`;不扣除会把库本身误判为参考 PoC 泄漏。PoC 自身的行仍按原阈值判定(任一文件含其半数以上即 FAIL)。这条规则只改变判定,不改变镜像内容。
+泄漏检查比对参考 PoC 时,先扣除它与公开测试库共有的行(V8:`test/mjsunit/mjsunit.js`、`test/mjsunit/wasm/wasm-module-builder.js`、`tools/clusterfuzz/js_fuzzer/resources/*.js`;SpiderMonkey:`js/src/jit-test/lib/*.js`,见各题 `build/leak.json` 的 `shared_libraries`)。这些库在漏洞版本的每份检出里都有:103 道 V8 题中有 16 道的 PoC 整份内联了 `wasm-module-builder.js`,模糊测试找到的 PoC 带着 js_fuzzer 预置的辅助函数。不扣除会把库本身误判为参考 PoC 泄漏。PoC 自身的行仍按原阈值判定(任一文件含其半数以上即 FAIL)。这条规则只改变判定,不改变镜像内容。
 
 ## 7. 批量(推送机上跑全部 207 题)
 
@@ -152,6 +152,7 @@ cat logs/batch/push.tsv                                                         
 - `passed $B` 只列本批通过的题,所以前几批已推送、已清理的题不会被重复推送。
 - 本批有推送失败(PUSH_FAIL)时,先别 clean 这些题:看 `logs/batch/<bundle>.push.log`,修好后单独重跑 `bash tools/batch.sh push bundles/<bundle>`,成功后再 clean。已经 clean 的题需要重新 build。
 - 只能构建、不能推送的机器上构建的镜像无法转到推送机,只能用于自检筛选;推送机仍需自行构建要推送的题。
+- Docker Desktop 上拉取若报 `error getting credentials`(凭据助手偶发失败,重试也可能连续失败),可让该批构建改用不含 credsStore 的临时配置匿名拉取:`DOCKER_CONFIG="$(mktemp -d)" bash tools/batch.sh build $B`。
 - 重新生成题包(可选,仓库里已有):`python3 tools/make_bundle.py --upstream /path/to/SEC-bench-Pro --all`。上游镜像 digest 记录在 `data/image_digests.json`(由 `tools/fetch_digests.py` 生成),题包固定到这些 digest;重新生成时保留原有 AUTH_TOKEN。
 
 ## 8. 已在云端完成的验证

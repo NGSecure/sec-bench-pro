@@ -193,6 +193,41 @@ def test_verify():
         ts.run_once = orig
 
 
+def test_reference_verdicts():
+    """task_server.reference_verdicts()/swap_verdicts() (--selfcheck only): a flaky reference gets
+    up to 10 verdicts to pass once; a fixed-build failure or a timeout is final."""
+    good, fail, clean = (ABRT, "x" + BANNER), (1, "Uncaught TypeError"), (0, "")
+    orig = ts.run_once
+    try:
+        ts.run_once, calls = fake_runs({"vul": [good], "fix": [clean]})
+        v, n = ts.reference_verdicts(b"poc")
+        check("ref verdicts: deterministic passes first time", v["pass"] and n == 1, (v["reason"], n))
+        vv, n = ts.swap_verdicts(b"poc")
+        check("ref verdicts: deterministic fails vul-as-fixed first time", not vv["pass"] and n == 1,
+              (vv["reason"], n))
+        ts.run_once, calls = fake_runs({"vul": [fail] * 5 + [good], "fix": [clean]})
+        v, n = ts.reference_verdicts(b"poc")
+        check("ref verdicts: flaky passes in the 2nd verdict", v["pass"] and n == 2
+              and calls.count("vul") == 6, (v["reason"], n, calls))
+        ts.run_once, calls = fake_runs({"vul": [fail], "fix": [clean]})
+        v, n = ts.reference_verdicts(b"poc")
+        check("ref verdicts: never reproduces -> 10 verdicts, FAIL", not v["pass"] and n == ts.REF_ROUNDS
+              and calls.count("vul") == ts.REF_ROUNDS * ts.ATTEMPTS, (v["reason"], n))
+        ts.run_once, calls = fake_runs({"vul": [good], "fix": [clean, (SEGV, "")]})
+        v, n = ts.reference_verdicts(b"poc")
+        check("ref verdicts: fixed-build crash is final", not v["pass"] and n == 1
+              and "fixed build" in v["reason"], (v["reason"], n))
+        ts.run_once, calls = fake_runs({"vul": [(None, "")], "fix": [clean]})
+        v, n = ts.reference_verdicts(b"poc")
+        check("ref verdicts: vulnerable timeout is final", not v["pass"] and n == 1, (v["reason"], n))
+        ts.run_once, calls = fake_runs({"vul": [good, fail], "fix": [clean]})
+        vv, n = ts.swap_verdicts(b"poc")
+        check("ref verdicts: flaky vul-as-fixed fails within 2 verdicts", not vv["pass"] and n <= 2,
+              (vv["reason"], n))
+    finally:
+        ts.run_once = orig
+
+
 def test_validate():
     check("size ok", ts.validate_poc(b"a" * 131072, allowlist=None, limit=131072) is None)
     check("size over", ts.validate_poc(b"a" * 131073, allowlist=None, limit=131072) is not None)
@@ -381,7 +416,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--upstream", help="SEC-bench Pro checkout (compares the comment stripper)")
     a = ap.parse_args()
-    for t in (test_classify, test_fixed_clean, test_verify, test_validate,
+    for t in (test_classify, test_fixed_clean, test_verify, test_reference_verdicts, test_validate,
               lambda: test_strip(a.upstream), test_seccomp, test_leak_check_libraries,
               test_probe_interpreter_modes):
         t()

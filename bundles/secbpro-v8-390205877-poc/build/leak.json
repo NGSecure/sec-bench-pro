@@ -8,6 +8,7 @@
   ],
   "shared_libraries": [
     "test/mjsunit/mjsunit.js",
-    "test/mjsunit/wasm/wasm-module-builder.js"
+    "test/mjsunit/wasm/wasm-module-builder.js",
+    "tools/clusterfuzz/js_fuzzer/resources/*.js"
   ]
 }

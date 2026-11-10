@@ -115,10 +115,12 @@ def existing_token(bundle):
 
 
 # Public test-harness libraries that reference PoCs paste in whole to run standalone
-# (16 of the 103 V8 PoCs carry all of wasm-module-builder.js). The leak check does not
+# (16 of the 103 V8 PoCs carry all of wasm-module-builder.js; fuzzer-found ones carry the
+# helpers ClusterFuzz's js_fuzzer prepends from its resources/). The leak check does not
 # count their lines as the PoC's own; paths are globs relative to the work dir.
 SHARED_LIBRARIES = {
-    "v8": ["test/mjsunit/mjsunit.js", "test/mjsunit/wasm/wasm-module-builder.js"],
+    "v8": ["test/mjsunit/mjsunit.js", "test/mjsunit/wasm/wasm-module-builder.js",
+           "tools/clusterfuzz/js_fuzzer/resources/*.js"],
     "sm": ["js/src/jit-test/lib/*.js"],
 }
 
