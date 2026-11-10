@@ -120,19 +120,39 @@ bash bundles/secbpro-sm-2009303-poc/push.sh
 
 泄漏检查比对参考 PoC 时,先扣除它与公开测试库共有的行(V8:`test/mjsunit/mjsunit.js`、`test/mjsunit/wasm/wasm-module-builder.js`;SpiderMonkey:`js/src/jit-test/lib/*.js`,见各题 `build/leak.json` 的 `shared_libraries`)。这些库在漏洞版本的每份检出里都有,103 道 V8 题中有 16 道的 PoC 整份内联了 `wasm-module-builder.js`;不扣除会把库本身误判为参考 PoC 泄漏。PoC 自身的行仍按原阈值判定(任一文件含其半数以上即 FAIL)。这条规则只改变判定,不改变镜像内容。
 
-## 7. 批量(全部 207 题)
+## 7. 批量(推送机上跑全部 207 题)
+
+一次性准备:按 §6 克隆本仓库并 `docker login`(Docker Hub),在公网准备好 `NEWPLATFORM_DIR`(含 cwm)。之后每批重复下面三步。批大小按磁盘定:构建期间每题约占 30 GB,例如 500 GB 可用空间每批约 15 题,207 题共 14 批。每题构建加自检约 20 分钟(含下载),207 题仅构建与自检约需 70 小时,推送时间另计。
 
 ```bash
-python3 tools/make_bundle.py --upstream /path/to/SEC-bench-Pro --all   # 可选:重新生成 207 个题包(仓库里已有)
-bash tools/batch.sh build bundles/secbpro-v8-*-poc                      # 公网:逐题构建 + 自检,汇总到 logs/batch/summary.tsv
-bash tools/batch.sh push  $(bash tools/batch.sh passed)                 # 上传网络:只推送自检通过的题
-bash tools/batch.sh clean $(bash tools/batch.sh passed)                 # 推送后释放磁盘
+B=$(ls -d bundles/secbpro-*-poc | sed -n 1,15p)    # 第 1 批;之后依次改成 16,30p、31,45p……196,207p
+
+# 1) 公网:逐题拉取、构建、自检,每题一行追加到 logs/batch/summary.tsv
+bash tools/batch.sh build $B
+
+# 2) 切到上传网络:只推送本批自检通过的题,并回填各题的 task.toml 与 image_refs.json
+docker login swr-coder-data-platform-wce1sr.swr-pro.myhuaweicloud.com    # 每台机器登录一次即可
+bash tools/batch.sh push $(bash tools/batch.sh passed $B)
+
+# 3) 释放本批镜像与构建缓存,然后切回公网做下一批
+bash tools/batch.sh clean $B
+docker builder prune -f
 ```
 
-- 自检 FAIL 表示参考 PoC 在真实构建上不通过(或 main 镜像泄漏),按约定剔除该题;原因在 `logs/batch/<bundle>.build.log`。
-- 每题下载约 10 GB,请按磁盘分批:构建一批 → 切到上传网络推送 → clean → 下一批。每题自检后镜像层与 build cache 约 30 GB,长时间批量构建时请定期 `docker builder prune`。
+全部批次完成后,提交回填结果,并把两张汇总表发回(`logs/` 不入库):
+
+```bash
+git add bundles/*/task.toml bundles/*/image_refs.json
+git commit -m "Backfill SWR image addresses for the pushed bundles" && git push
+awk -F'\t' '{s[$1]=$2} END {for (b in s) print s[b] "\t" b}' logs/batch/summary.tsv | sort    # 每题最后一次自检的 PASS / FAIL
+cat logs/batch/push.tsv                                                                        # PUSHED / PUSH_FAIL
+```
+
+- 自检 FAIL 表示参考 PoC 在真实构建上不通过(或 main 镜像泄漏),按约定剔除该题,不推送;原因在 `logs/batch/<bundle>.build.log`。
+- `passed $B` 只列本批通过的题,所以前几批已推送、已清理的题不会被重复推送。
+- 本批有推送失败(PUSH_FAIL)时,先别 clean 这些题:看 `logs/batch/<bundle>.push.log`,修好后单独重跑 `bash tools/batch.sh push bundles/<bundle>`,成功后再 clean。已经 clean 的题需要重新 build。
 - 只能构建、不能推送的机器上构建的镜像无法转到推送机,只能用于自检筛选;推送机仍需自行构建要推送的题。
-- 上游镜像 digest 记录在 `data/image_digests.json`(由 `tools/fetch_digests.py` 生成),题包固定到这些 digest;重新生成题包时保留原有 AUTH_TOKEN。
+- 重新生成题包(可选,仓库里已有):`python3 tools/make_bundle.py --upstream /path/to/SEC-bench-Pro --all`。上游镜像 digest 记录在 `data/image_digests.json`(由 `tools/fetch_digests.py` 生成),题包固定到这些 digest;重新生成时保留原有 AUTH_TOKEN。
 
 ## 8. 已在云端完成的验证
 

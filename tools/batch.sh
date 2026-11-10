@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Build, push or clean many bundles, one at a time, with a summary.
 #
-#   bash tools/batch.sh build bundles/secbpro-v8-*-poc      # PUBLIC network
-#   bash tools/batch.sh push  $(bash tools/batch.sh passed) # UPLOAD network (NEWPLATFORM_DIR, SWR login)
-#   bash tools/batch.sh clean $(bash tools/batch.sh passed) # after the push: free the disk
-#   bash tools/batch.sh passed                              # bundles whose last build passed
+#   bash tools/batch.sh build $B                       # PUBLIC network
+#   bash tools/batch.sh push  $(bash tools/batch.sh passed $B)   # UPLOAD network (NEWPLATFORM_DIR, SWR login)
+#   bash tools/batch.sh clean $B                       # after the push: free the disk
+#   bash tools/batch.sh passed [bundle...]             # bundles whose last build passed (among those given)
+# where B is one batch of bundle dirs, e.g. B=$(ls -d bundles/secbpro-*-poc | sed -n 1,15p)
 #
 # build  runs each bundle's build.sh (pull the pinned images, build both images, leak
 #        check, task-server self-check with the reference PoC) and appends one line per
@@ -57,8 +58,12 @@ case "$cmd" in
     done ;;
   passed)
     [ -f "$LOG/summary.tsv" ] || exit 0
-    awk -F'\t' '{last[$1]=$2} END {for (b in last) if (last[b]=="PASS") print b}' "$LOG/summary.tsv" \
+    only=""; for b in "$@"; do only="$only $(basename "${b%/}")"; done
+    awk -F'\t' -v only="$only" '
+      BEGIN { n = split(only, w, " "); for (i = 1; i <= n; i++) keep[w[i]] = 1 }
+      { last[$1] = $2 }
+      END { for (b in last) if (last[b] == "PASS" && (n == 0 || b in keep)) print b }' "$LOG/summary.tsv" \
       | sort | sed "s|^|$REPO/bundles/|" ;;
   *)
-    sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+    sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
