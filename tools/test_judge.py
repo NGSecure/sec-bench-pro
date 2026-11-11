@@ -431,6 +431,22 @@ def test_leak_check_source_tree():
     for p in many:
         os.unlink(p)
     shutil.rmtree(root)
+    # tracked_predicate(): git that tracks the tree vs. one that tracks nothing (SpiderMonkey images)
+    import subprocess
+    repo = tempfile.mkdtemp(prefix="secb_git_")
+    g = ["git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
+    subprocess.run(["git", "init", "-q", repo], check=True)
+    a, b = put(os.path.join(repo, "test", "a.js"), own[:4]), put(os.path.join(repo, "b.js"), own[:4])
+    subprocess.run(g + ["commit", "-q", "--allow-empty", "-m", "empty tree"], check=True)
+    check("leak tree: git tracking no files -> cannot tell (None)", lc.tracked_predicate(repo) is None)
+    subprocess.run(g + ["add", "test/a.js"], check=True)
+    subprocess.run(g + ["commit", "-q", "-m", "a"], check=True)
+    t = lc.tracked_predicate(repo)
+    check("leak tree: tracked vs untracked told apart", t is not None and t(a) and not t(b), t)
+    plain = tempfile.mkdtemp(prefix="secb_nogit_")
+    check("leak tree: no repository -> cannot tell (None)", lc.tracked_predicate(plain) is None)
+    shutil.rmtree(plain)
+    shutil.rmtree(repo)
 
 
 STUB_DOCKER = r"""#!/usr/bin/env bash

@@ -21,7 +21,9 @@ Checks (FAIL = the image gives away the answer; NOTE = for a human to glance at)
                        SEC-bench Pro's agents get it too) is listed under
                        `existing_file_controls` instead, and build.sh runs it as a
                        negative control: the task fails only if it already solves the
-                       task. Untracked, or anywhere else, it is a FAIL.
+                       task. Untracked, or anywhere else, it is a FAIL. Where the tree's
+                       git tracks nothing (SpiderMonkey images), every file under the
+                       work dir counts as the revision's own.
   3. git history       no fix commit object resolves; the history has one commit;
                        nested repositories are listed.
   4. artifacts         no upstream instance files (poc.js, Report.md, VERIFIED.txt,
@@ -133,6 +135,18 @@ def reference_poc_check(gt_lines, roots, libraries=(), tree=None, max_controls=1
     return fails, notes, report
 
 
+def tracked_predicate(work):
+    """is_tracked for reference_poc_check(), or None when the work dir's git cannot tell: git
+    missing, no repository, or a repository that tracks no files (the SpiderMonkey images keep
+    the whole source tree on disk under a single commit with an empty tree)."""
+    if not (have("git") and os.path.isdir(os.path.join(work, ".git"))):
+        return None
+    if not run(["sh", "-c", 'git -C "$1" ls-files 2>/dev/null | head -n 1', "sh", work])[1]:
+        return None
+    return lambda path: run(["git", "-C", work, "ls-files", "--error-unmatch", "--",
+                             os.path.relpath(path, work)])[0] == 0
+
+
 def main():
     cfg = json.load(open(os.path.join(CHECK, "leak.json")))
     work = cfg["work_dir"]
@@ -165,15 +179,15 @@ def main():
              if not any(d != r and d.startswith(r.rstrip("/") + "/") for r in roots)]
     libs = sorted(set(p for pat in cfg.get("shared_libraries", [])
                       for p in glob.glob(os.path.join(work, pat)) if os.path.isfile(p)))
-    git_tree = have("git") and os.path.isdir(os.path.join(work, ".git"))
-
-    def tracked(path):          # part of the revision's tree; without git this cannot be told
-        return not git_tree or run(["git", "-C", work, "ls-files", "--error-unmatch", "--",
-                                    os.path.relpath(path, work)])[0] == 0
-    f, n, r = reference_poc_check(gt_lines, roots, libs, tree=work, is_tracked=tracked)
+    is_tracked = tracked_predicate(work)
+    report["source_tree_tracked_by_git"] = is_tracked is not None
+    f, n, r = reference_poc_check(gt_lines, roots, libs, tree=work, is_tracked=is_tracked)
     fails += f
     notes += n
     report.update(r)
+    if is_tracked is None and r.get("existing_file_controls"):
+        notes.append("the source tree's git tracks no files here, so every match under %s counts as "
+                     "the revision's own and runs as a negative control" % work)
 
     # 3. git history --------------------------------------------------------------------
     if have("git") and os.path.isdir(os.path.join(work, ".git")):
