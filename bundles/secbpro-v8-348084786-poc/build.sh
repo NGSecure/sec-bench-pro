@@ -54,13 +54,32 @@ echo "==> build task-server    $TS_TAG"
 docker build -t "$TS_TAG" --build-arg VUL_IMAGE="$VUL_IMAGE" --build-arg FIX_IMAGE="$FIX_IMAGE" \
   -f environment/task-server/Dockerfile .
 
+CHECK_TMP="$(mktemp -d)"
+trap 'rm -rf "$CHECK_TMP"' EXIT
+
 echo "==> self-check 1/2: the agent image holds no fix, reference PoC, fix history or instance files"
 docker run --rm --network none -v "$HERE/build:/secb_check:ro" --entrypoint python3 "$MAIN_TAG" \
-  /secb_check/leak_check.py
+  /secb_check/leak_check.py | tee "$CHECK_TMP/leak.json"
+
+# Files of the source tree that hold most of the reference PoC (leak.json existing_file_controls,
+# typically older regression tests it was derived from) ship with the vulnerable revision, so
+# SEC-bench Pro's agents have them too. They join the negative controls: the task fails if one
+# of them, submitted as is, already solves it.
+mkdir -p "$CHECK_TMP/controls"
+cp "$HERE"/build/controls/*.js "$CHECK_TMP/controls/"
+python3 -c 'import json, sys; print("\n".join(json.load(open(sys.argv[1])).get("existing_file_controls", [])))' \
+  "$CHECK_TMP/leak.json" > "$CHECK_TMP/existing.txt"
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  n="existing__$(printf '%s' "${f#/}" | sed 's#/#__#g')"
+  case "$n" in *.js) ;; *) n="$n.js" ;; esac          # the self-check runs *.js controls
+  echo "    negative control from the source tree: $f"
+  docker run --rm --network none --entrypoint cat "$MAIN_TAG" "$f" > "$CHECK_TMP/controls/$n"
+done < "$CHECK_TMP/existing.txt"
 
 echo "==> self-check 2/2: isolation, reference PoC passes, vul-as-fixed fails, controls fail"
 docker run --rm --network none --cpus "$TS_CPUS" --memory "$TS_MEMORY" -e AUTH_TOKEN=selfcheck \
-  -v "$HERE/build/controls:/secb_controls:ro" --entrypoint python3 "$TS_TAG" \
+  -v "$CHECK_TMP/controls:/secb_controls:ro" --entrypoint python3 "$TS_TAG" \
   /secb/task_server.py --selfcheck /secb_controls
 
 echo "==> PASS: built $MAIN_TAG and $TS_TAG"

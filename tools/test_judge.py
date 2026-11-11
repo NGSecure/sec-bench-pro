@@ -384,6 +384,136 @@ def test_leak_check_libraries():
     shutil.rmtree(root)
 
 
+def test_leak_check_source_tree():
+    """build/leak_check.py check 2: a file of the source tree over the threshold becomes an
+    existing-file control (build.sh runs it as a negative control); anywhere else, or with no
+    source tree given, it is a FAIL."""
+    sys.path.insert(0, os.path.join(HERE, os.pardir, "templates", "build"))
+    import leak_check as lc
+    root = tempfile.mkdtemp(prefix="secb_tree_")
+    tree = os.path.join(root, "src", "v8")
+    own = ["let trigger_specific_value_%02d = makeTheBugHappen(%d);" % (i, i) for i in range(10)]
+
+    def put(path, lines):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write("\n".join(lines) + "\n")
+        return path
+
+    older = put(os.path.join(tree, "test", "regress", "regress-older.js"), own[:7])
+    put(os.path.join(tree, "test", "partial.js"), own[:2])
+    fails, notes, rep = lc.reference_poc_check(own, [root], (), tree=tree)
+    check("leak tree: source-tree file over the threshold -> control, not FAIL",
+          not fails and rep.get("existing_file_controls") == [older]
+          and any("negative controls" in n for n in notes), (fails, notes, rep))
+    fails, notes, rep = lc.reference_poc_check(own, [root], ())
+    check("leak tree: no source tree given -> FAIL as before", bool(fails) and older in fails[0], fails)
+    stray = put(os.path.join(root, "tmp", "copy.js"), own)
+    sibling = put(os.path.join(root, "src", "v8-other", "x.js"), own[:6])
+    fails, notes, rep = lc.reference_poc_check(own, [root], (), tree=tree + "/")
+    check("leak tree: outside the tree (a sibling dir too) -> FAIL, tree file still a control",
+          len(fails) == 1 and stray in fails[0] and sibling in fails[0] and older not in fails[0]
+          and rep.get("existing_file_controls") == [older], (fails, rep))
+    for p in (stray, sibling):
+        os.unlink(p)
+    loose = put(os.path.join(tree, "poc_copy.js"), own[:8])
+    fails, notes, rep = lc.reference_poc_check(own, [root], (), tree=tree, is_tracked=lambda p: p != loose)
+    check("leak tree: untracked file in the tree -> FAIL, tracked one still a control",
+          len(fails) == 1 and loose in fails[0] and "untracked" in fails[0]
+          and rep.get("existing_file_controls") == [older], (fails, rep))
+    os.unlink(loose)
+    many = [put(os.path.join(tree, "test", "m%02d.js" % i), own[:6]) for i in range(12)]
+    fails, notes, rep = lc.reference_poc_check(own, [root], (), tree=tree)
+    ctl = rep.get("existing_file_controls", [])
+    check("leak tree: controls capped at 10, closest first",
+          not fails and len(ctl) == 10 and ctl[0] == older and any("10 closest" in n for n in notes),
+          (ctl, notes))
+    for p in many:
+        os.unlink(p)
+    shutil.rmtree(root)
+
+
+STUB_DOCKER = r"""#!/usr/bin/env bash
+# Stub docker for test_build_sh_controls: logs each call and answers what build.sh needs.
+echo "$*" >> "$STUB/calls.log"
+[ "$1" = run ] || exit 0
+shift
+ep=""; vols=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --rm) shift ;;
+    --network|--cpus|--memory|-e) shift 2 ;;
+    -v) vols+=("$2"); shift 2 ;;
+    --entrypoint) ep="$2"; shift 2 ;;
+    *) break ;;
+  esac
+done
+shift                                   # the image
+case "$*" in
+  *leak_check.py*) cat "$STUB/leak.json"; exit "$(cat "$STUB/leak.rc")" ;;
+  *--selfcheck*)
+    for v in "${vols[@]}"; do
+      case "$v" in *:/secb_controls:ro) echo "${v%%:*}" > "$STUB/mount.txt"; cp -r "${v%%:*}" "$STUB/seen" ;; esac
+    done
+    echo '{"verdict": "PASS"}'; exit 0 ;;
+esac
+[ "$ep" = cat ] && exec cat "$STUB/root$1"
+exit 0
+"""
+
+
+def test_build_sh_controls():
+    """A bundle's build.sh with a stub docker: source-tree files the leak check lists join the
+    bundle's negative controls; a leak-check FAIL stops before the task-server self-check."""
+    import subprocess
+    bundle = os.path.join(HERE, os.pardir, "bundles", "secbpro-v8-472139305-poc")
+    base = sorted(os.listdir(os.path.join(bundle, "build", "controls")))
+    stub = tempfile.mkdtemp(prefix="secb_stub_")
+    os.makedirs(os.path.join(stub, "bin"))
+    docker = os.path.join(stub, "bin", "docker")
+    with open(docker, "w") as f:
+        f.write(STUB_DOCKER)
+    os.chmod(docker, 0o755)
+    files = {"/src/v8/test/mjsunit/regress/regress-1.js": "older_test();\n",
+             "/src/v8/test/cctest/test-x.cc": "CompileRun(\"x\");\n"}
+    for p, text in files.items():
+        os.makedirs(os.path.dirname(stub + "/root" + p), exist_ok=True)
+        with open(stub + "/root" + p, "w") as f:
+            f.write(text)
+    env = dict(os.environ, STUB=stub, PATH=os.path.join(stub, "bin") + os.pathsep + os.environ["PATH"])
+
+    def run(leak, rc):
+        for p in ("calls.log", "mount.txt"):
+            if os.path.exists(os.path.join(stub, p)):
+                os.unlink(os.path.join(stub, p))
+        shutil.rmtree(os.path.join(stub, "seen"), ignore_errors=True)
+        with open(os.path.join(stub, "leak.json"), "w") as f:
+            json.dump(leak, f)
+        with open(os.path.join(stub, "leak.rc"), "w") as f:
+            f.write(str(rc))
+        p = subprocess.run(["bash", os.path.join(bundle, "build.sh")], env=env, stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT, universal_newlines=True)
+        seen = sorted(os.listdir(os.path.join(stub, "seen"))) if os.path.isdir(os.path.join(stub, "seen")) else None
+        return p.returncode, p.stdout, seen
+
+    rc, out, seen = run({"verdict": "PASS", "existing_file_controls": sorted(files)}, 0)
+    want = sorted(base + ["existing__src__v8__test__cctest__test-x.cc.js",
+                          "existing__src__v8__test__mjsunit__regress__regress-1.js"])
+    check("build.sh: source-tree files join the controls", rc == 0 and seen == want, (rc, seen, out[-800:]))
+    copied = open(os.path.join(stub, "seen", "existing__src__v8__test__mjsunit__regress__regress-1.js")).read() \
+        if seen else ""
+    check("build.sh: control content copied from the image", copied == "older_test();\n", copied)
+    mount = open(os.path.join(stub, "mount.txt")).read().strip() if os.path.exists(os.path.join(stub, "mount.txt")) else ""
+    check("build.sh: temp controls dir removed at exit", mount and not os.path.exists(mount), mount)
+    rc, out, seen = run({"verdict": "PASS"}, 0)
+    check("build.sh: no source-tree overlaps -> only the bundle's controls", rc == 0 and seen == base, (rc, seen))
+    rc, out, seen = run({"verdict": "FAIL"}, 1)
+    calls = open(os.path.join(stub, "calls.log")).read()
+    check("build.sh: leak-check FAIL stops before the self-check", rc != 0 and "--selfcheck" not in calls
+          and seen is None, (rc, calls[-500:]))
+    shutil.rmtree(stub)
+
+
 def test_probe_interpreter_modes():
     """task_server.open_for_others()/restore_modes(): what the isolation probe opens for its
     interpreter, and that every mode comes back."""
@@ -418,7 +548,7 @@ def main():
     a = ap.parse_args()
     for t in (test_classify, test_fixed_clean, test_verify, test_reference_verdicts, test_validate,
               lambda: test_strip(a.upstream), test_seccomp, test_leak_check_libraries,
-              test_probe_interpreter_modes):
+              test_leak_check_source_tree, test_build_sh_controls, test_probe_interpreter_modes):
         t()
     os.unlink(_cfg.name)
     print("%d checks, %d failed" % (COUNT[0], len(FAILS)))
