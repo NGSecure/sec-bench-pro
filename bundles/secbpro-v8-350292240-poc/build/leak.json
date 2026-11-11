@@ -1,0 +1,16 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "58f407806ad0ea83d8174dd701ba4b84c3cca14f"
+  ],
+  "target_files": [
+    "src/wasm/module-instantiate.cc",
+    "src/wasm/baseline/liftoff-compiler.cc",
+    "src/wasm/turboshaft-graph-interface.cc"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js",
+    "tools/clusterfuzz/js_fuzzer/resources/*.js"
+  ]
+}

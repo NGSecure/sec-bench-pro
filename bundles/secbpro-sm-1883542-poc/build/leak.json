@@ -1,0 +1,13 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "86083f35c4dc832565464cca79f6224821a985e0",
+    "83c1f27889e88fb90d6eb60846f7c57820519529"
+  ],
+  "target_files": [
+    "js/src/jit/CacheIR.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

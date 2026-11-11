@@ -1,0 +1,14 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "d4700da23d4ab417d9f706e3cd5371a3b12ab593"
+  ],
+  "target_files": [
+    "src/execution/isolate.cc"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js",
+    "tools/clusterfuzz/js_fuzzer/resources/*.js"
+  ]
+}

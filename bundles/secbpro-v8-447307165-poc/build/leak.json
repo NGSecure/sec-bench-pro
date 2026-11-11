@@ -1,0 +1,14 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "b0157a634e584163cbe6004db3161dc16dea20f9"
+  ],
+  "target_files": [
+    "src/objects/js-atomics-synchronization.cc"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js",
+    "tools/clusterfuzz/js_fuzzer/resources/*.js"
+  ]
+}

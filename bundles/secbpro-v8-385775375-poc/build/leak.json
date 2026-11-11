@@ -1,0 +1,14 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "3bbb4dcb340460be8ff9afe51290cfe94d7188ff"
+  ],
+  "target_files": [
+    "src/runtime/runtime-typedarray.cc"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js",
+    "tools/clusterfuzz/js_fuzzer/resources/*.js"
+  ]
+}

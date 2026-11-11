@@ -1,0 +1,19 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "af7bb7c7c1031ae7fe82f6aa63b9e1e757af7e1a",
+    "9c190ac9cba9de260ebcc12048ceb00f9370142b",
+    "7d0e94636caa2d02aac935b79e959ff38ee39121",
+    "b71d94fb35c0f54be3d0a855204d68e0c6ef7684"
+  ],
+  "target_files": [
+    "js/src/jit/JSJitFrameIter.h",
+    "js/src/jit/JitFrames.cpp",
+    "js/src/jit/RematerializedFrame.cpp",
+    "js/src/vm/FrameIter-inl.h",
+    "js/src/vm/ArgumentsObject.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

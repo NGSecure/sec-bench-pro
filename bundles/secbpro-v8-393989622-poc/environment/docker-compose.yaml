@@ -1,0 +1,51 @@
+# SEC-bench Pro PoC task: agent sandbox (main) + task-server sidecar.
+# Merged on top of Harbor's base docker-compose config. The task-server holds the
+# vulnerable and the fixed engine build and the reference PoC in an isolated
+# container; the agent only talks to it over HTTP (submit.sh). Both images build
+# from the bundle root; on the platform the prebuilt docker_image / task_server_image
+# are used instead. Network policy is injected by the platform, not declared here.
+services:
+  main:
+    build:
+      context: ..
+      dockerfile: environment/Dockerfile
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - GOOGLE_BASE_URL=${GOOGLE_BASE_URL:-}
+      - OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL:-}
+      - NVIDIA_BASE_URL=${NVIDIA_BASE_URL:-}
+      - AZURE_BASE_URL=${AZURE_BASE_URL:-}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}
+      - DOUBAO_BASE_URL=${DOUBAO_BASE_URL:-}
+      - LITELLM_BASE_URL=${LITELLM_BASE_URL:-}
+      - DYNAMO_BASE_URL=${DYNAMO_BASE_URL:-}
+      - HF_ENDPOINT_URL=${HF_ENDPOINT_URL:-}
+    depends_on:
+      task-server:
+        condition: service_healthy
+
+  task-server:
+    build:
+      context: ..
+      dockerfile: environment/task-server/Dockerfile
+    platform: linux/amd64
+    environment:
+      - AUTH_TOKEN=deb1e772d5d677aa4bc2795707b84874
+    expose:
+      - "9111"
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 8192M
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9111/health')"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 20s

@@ -1,0 +1,12 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "4f27a916218de6a299db8d00d48ad5e91db9832d"
+  ],
+  "target_files": [
+    "js/src/builtin/OrderedHashTableObject.h"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "1c39b127b06b"
+  ],
+  "target_files": [
+    "js/src/jit/ScalarReplacement.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "20d9a7f760c018183c836283017a321638b66810"
+  ],
+  "target_files": [
+    "src/wasm/canonical-types.cc",
+    "src/wasm/canonical-types.h"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js",
+    "tools/clusterfuzz/js_fuzzer/resources/*.js"
+  ]
+}

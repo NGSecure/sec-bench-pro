@@ -1,0 +1,15 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "c250ecfd8b26dee1370d89524946288cbfbf0635"
+  ],
+  "target_files": [
+    "src/asmjs/asm-parser.cc",
+    "src/wasm/function-body-decoder-impl.h"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js",
+    "tools/clusterfuzz/js_fuzzer/resources/*.js"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "engine": "sm",
+  "instance_id": "1994994",
+  "work_dir": "/src/gecko-dev",
+  "binary": "/out/js",
+  "options": "--fuzzing-safe --ion-offthread-compile=off",
+  "error_type": "ASAN_CRASH",
+  "timeout_sec": 300,
+  "attempts": 3,
+  "max_poc_bytes": 131072,
+  "native_allowlist": null,
+  "asan_options": "abort_on_error=1:detect_leaks=0:symbolize=0:color=never",
+  "fixed_timeout_ok": false,
+  "fixed_oom_ok": false,
+  "disable_aslr": false
+}

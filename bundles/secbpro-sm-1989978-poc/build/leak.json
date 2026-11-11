@@ -1,0 +1,12 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "fa91ed58b791e04279b8fbfd6476550dd1fcb27b"
+  ],
+  "target_files": [
+    "js/src/vm/Iteration.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

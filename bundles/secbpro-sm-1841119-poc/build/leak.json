@@ -1,0 +1,21 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "9115ac056da8285348457b5c206636c280636cbb"
+  ],
+  "target_files": [
+    "js/src/wasm/WasmBaselineCompile.cpp",
+    "js/src/wasm/WasmIonCompile.cpp",
+    "js/src/wasm/WasmJS.cpp",
+    "js/src/wasm/WasmModuleTypes.cpp",
+    "js/src/wasm/WasmModuleTypes.h",
+    "js/src/wasm/WasmSerialize.cpp",
+    "js/src/wasm/WasmTable.cpp",
+    "js/src/wasm/WasmTable.h",
+    "js/src/wasm/WasmTypeDef.h",
+    "js/src/wasm/WasmValType.h"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

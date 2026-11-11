@@ -1,0 +1,14 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "c224760a76fa4c1f59d4bb82d3e69d74503dfc83",
+    "557d0219977ec65dca21449915b1db50e7d85507",
+    "a40af352d29a63054e12d2ae2519ec970f2d8580"
+  ],
+  "target_files": [
+    "js/src/jit/IonAnalysis.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

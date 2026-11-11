@@ -1,0 +1,41 @@
+diff --git a/src/init/isolate-group.cc b/src/init/isolate-group.cc
+index d0843d71bfb..9af2277d514 100644
+--- a/src/init/isolate-group.cc
++++ b/src/init/isolate-group.cc
+@@ -589,6 +589,10 @@ class PABackedSandboxedArrayBufferAllocator::Impl final {
+     }
+     // The V8 sandbox is guaranteed to be large enough to host the pool.
+     CHECK(pool_base);
++    // Call PartitionAddressSpace::Init() first just to make sure metadata
++    // region start is initialized and the configurable pool allocations do have
++    // out-of-line metadata.
++    partition_alloc::internal::PartitionAddressSpace::Init();
+     partition_alloc::internal::PartitionAddressSpace::InitConfigurablePool(
+         pool_base, pool_size);
+ 
+diff --git a/third_party/partition_alloc/src/partition_alloc/allocator_config.cc b/third_party/partition_alloc/src/partition_alloc/allocator_config.cc
+index faacb9a..b851768 100644
+--- a/third_party/partition_alloc/src/partition_alloc/allocator_config.cc
++++ b/third_party/partition_alloc/src/partition_alloc/allocator_config.cc
+@@ -18,6 +18,9 @@ enum ExternalMetadataTrialGroupPercentage {
+   kEnabled = 50,   // 50%
+   kDisabled = 50,  // 50%
+ };
++// Rather than doing percentage group based assignment, set all clients to
++// enabled when true.
++constexpr bool kDefaultEnableExternalMetadataTrial = true;
+ 
+ ExternalMetadataTrialGroup s_externalMetadataJoinedGroup =
+     ExternalMetadataTrialGroup::kUndefined;
+@@ -31,6 +34,11 @@ void SetExternalMetadataTrialGroup(ExternalMetadataTrialGroup group) {
+ namespace internal {
+ 
+ ExternalMetadataTrialGroup SelectExternalMetadataTrialGroup() {
++  if constexpr (kDefaultEnableExternalMetadataTrial) {
++    auto group = ExternalMetadataTrialGroup::kEnabled;
++    SetExternalMetadataTrialGroup(group);
++    return group;
++  }
+   uint32_t random = internal::RandomValue() /
+                     static_cast<double>(std::numeric_limits<uint32_t>::max()) *
+                     100.0;

@@ -1,0 +1,385 @@
+From 907e0ce2a1aef3f8cb3e9de2bdda3f8b74dc0a84 Mon Sep 17 00:00:00 2001
+From: Tooru Fujisawa <arai_a@mac.com>
+Date: Wed, 19 Jun 2024 16:31:26 +0000
+Subject: [PATCH] Bug 1901411 - Part 1: Partially revert
+ AsyncGeneratorDrainQueue to AsyncGeneratorResumeNext. r=mgaudet,jandem
+
+Differential Revision: https://phabricator.services.mozilla.com/D213351
+---
+ js/src/vm/AsyncIteration.cpp | 35 ++++++++++++++++++++++++++++++++++-
+ 1 file changed, 34 insertions(+), 1 deletion(-)
+
+diff --git a/js/src/vm/AsyncIteration.cpp b/js/src/vm/AsyncIteration.cpp
+index 33546dc9dd75e..fc30ecd4e564a 100644
+--- a/js/src/vm/AsyncIteration.cpp
++++ b/js/src/vm/AsyncIteration.cpp
+@@ -602,7 +602,11 @@ AsyncGeneratorRequest* AsyncGeneratorRequest::create(
+ [[nodiscard]] static bool AsyncGeneratorDrainQueue(
+     JSContext* cx, Handle<AsyncGeneratorObject*> generator) {
+   // Step 1. Assert: generator.[[AsyncGeneratorState]] is completed.
+-  MOZ_ASSERT(generator->isCompleted());
++  MOZ_ASSERT(!generator->isExecuting());
++  MOZ_ASSERT(!generator->isAwaitingYieldReturn());
++  if (generator->isAwaitingReturn()) {
++    return true;
++  }
+ 
+   // Step 2. Let queue be generator.[[AsyncGeneratorQueue]].
+   // Step 3. If queue is empty, return.
+@@ -625,6 +629,29 @@ AsyncGeneratorRequest* AsyncGeneratorRequest::create(
+     // Step 5.b. Let completion be next.[[Completion]].
+     CompletionKind completionKind = next->completionKind();
+ 
++    if (completionKind != CompletionKind::Normal) {
++      if (generator->isSuspendedStart()) {
++        generator->setCompleted();
++      }
++    }
++    if (!generator->isCompleted()) {
++      MOZ_ASSERT(generator->isSuspendedStart() ||
++                 generator->isSuspendedYield());
++
++      RootedValue argument(cx, next->completionValue());
++
++      if (completionKind == CompletionKind::Return) {
++        generator->setAwaitingYieldReturn();
++
++        return InternalAsyncGeneratorAwait(
++            cx, generator, argument,
++            PromiseHandler::AsyncGeneratorYieldReturnAwaitedFulfilled,
++            PromiseHandler::AsyncGeneratorYieldReturnAwaitedRejected);
++      }
++
++      return AsyncGeneratorResume(cx, generator, completionKind, argument);
++    }
++
+     // Step 5.c. If completion.[[Type]] is return, then
+     if (completionKind == CompletionKind::Return) {
+       RootedValue value(cx, next->completionValue());
+@@ -657,6 +684,12 @@ AsyncGeneratorRequest* AsyncGeneratorRequest::create(
+       }
+     }
+ 
++    MOZ_ASSERT(!generator->isExecuting());
++    MOZ_ASSERT(!generator->isAwaitingYieldReturn());
++    if (generator->isAwaitingReturn()) {
++      return true;
++    }
++
+     // Step 5.d.iii. If queue is empty, set done to true.
+     if (generator->isQueueEmpty()) {
+       return true;
+From ac781d872218601ed9f93a2660c1c3f2e430f9d0 Mon Sep 17 00:00:00 2001
+From: Tooru Fujisawa <arai_a@mac.com>
+Date: Wed, 19 Jun 2024 16:31:26 +0000
+Subject: [PATCH] Bug 1901411 - Part 2: Fix sanity check for debugger.
+ r=mgaudet
+
+Differential Revision: https://phabricator.services.mozilla.com/D213352
+---
+ js/src/vm/AsyncIteration.cpp | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/js/src/vm/AsyncIteration.cpp b/js/src/vm/AsyncIteration.cpp
+index fc30ecd4e564a..dec7a77500a8c 100644
+--- a/js/src/vm/AsyncIteration.cpp
++++ b/js/src/vm/AsyncIteration.cpp
+@@ -800,8 +800,7 @@ class MOZ_STACK_CLASS MaybeEnterAsyncGeneratorRealm {
+ 
+ [[nodiscard]] static bool AsyncGeneratorMethodSanityCheck(
+     JSContext* cx, Handle<AsyncGeneratorObject*> generator) {
+-  if (generator->isCompleted() || generator->isSuspendedStart() ||
+-      generator->isSuspendedYield()) {
++  if (generator->isSuspendedStart() || generator->isSuspendedYield()) {
+     // The spec assumes the queue is empty when async generator methods are
+     // called with those state, but our debugger allows calling those methods
+     // in unexpected state, such as before suspendedStart.
+From c217581ee0f2039a6feef0f29a17d8e210b782b1 Mon Sep 17 00:00:00 2001
+From: Tooru Fujisawa <arai_a@mac.com>
+Date: Wed, 19 Jun 2024 16:31:26 +0000
+Subject: [PATCH] Bug 1901411 - Part 3: Revert inlining of
+ AsyncGeneratorDrainQueue in AsyncGeneratorNext. r=mgaudet,jandem
+
+Differential Revision: https://phabricator.services.mozilla.com/D213353
+---
+ js/src/vm/AsyncIteration.cpp | 47 ++++++------------------------------
+ 1 file changed, 7 insertions(+), 40 deletions(-)
+
+diff --git a/js/src/vm/AsyncIteration.cpp b/js/src/vm/AsyncIteration.cpp
+index dec7a77500a8c..a6b2bafe558af 100644
+--- a/js/src/vm/AsyncIteration.cpp
++++ b/js/src/vm/AsyncIteration.cpp
+@@ -851,48 +851,15 @@ bool js::AsyncGeneratorNext(JSContext* cx, unsigned argc, Value* vp) {
+     return false;
+   }
+ 
+-  // Step 5. Let state be generator.[[AsyncGeneratorState]].
+-  // Step 6. If state is completed, then
+-  if (generator->isCompleted()) {
+-    // Step 6.a. Let iteratorResult be
+-    //           ! CreateIterResultObject(undefined, true).
+-    JSObject* resultObj =
+-        CreateIterResultObject(cx, UndefinedHandleValue, true);
+-    if (!resultObj) {
+-      return false;
+-    }
+-
+-    // Step 6.b. Perform
+-    //           ! Call(promiseCapability.[[Resolve]], undefined,
+-    //                  « iteratorResult »).
+-    RootedValue resultValue(cx, ObjectValue(*resultObj));
+-    if (!ResolvePromiseInternal(cx, resultPromise, resultValue)) {
+-      return false;
+-    }
+-  } else {
+-    // Step 7. Let completion be NormalCompletion(value).
+-    // Step 8. Perform
+-    //         ! AsyncGeneratorEnqueue(generator, completion,
+-    //                                 promiseCapability).
+-    if (!AsyncGeneratorEnqueue(cx, generator, CompletionKind::Normal,
+-                               completionValue, resultPromise)) {
++  // Steps 5-10.
++  if (!AsyncGeneratorEnqueue(cx, generator, CompletionKind::Normal,
++                             completionValue, resultPromise)) {
++    return false;
++  }
++  if (!generator->isExecuting() && !generator->isAwaitingYieldReturn()) {
++    if (!AsyncGeneratorDrainQueue(cx, generator)) {
+       return false;
+     }
+-
+-    // Step 9. If state is either suspendedStart or suspendedYield, then
+-    if (generator->isSuspendedStart() || generator->isSuspendedYield()) {
+-      RootedValue resumptionValue(cx, completionValue);
+-      // Step 9.a. Perform ! AsyncGeneratorResume(generator, completion).
+-      if (!AsyncGeneratorResume(cx, generator, CompletionKind::Normal,
+-                                resumptionValue)) {
+-        return false;
+-      }
+-    } else {
+-      // Step 10. Else,
+-      // Step 10.a. Assert: state is either executing or awaiting-return.
+-      MOZ_ASSERT(generator->isExecuting() || generator->isAwaitingReturn() ||
+-                 generator->isAwaitingYieldReturn());
+-    }
+   }
+ 
+   // Step 6.c. Return promiseCapability.[[Promise]].
+From 4c95847d3b3152b85ae15ddb4977ad9fad7be571 Mon Sep 17 00:00:00 2001
+From: Tooru Fujisawa <arai_a@mac.com>
+Date: Wed, 19 Jun 2024 16:31:27 +0000
+Subject: [PATCH] Bug 1901411 - Part 4: Revert inlining of
+ AsyncGeneratorDrainQueue in AsyncGeneratorReturn. r=mgaudet,jandem
+
+Differential Revision: https://phabricator.services.mozilla.com/D213354
+---
+ js/src/vm/AsyncIteration.cpp | 24 +++---------------------
+ 1 file changed, 3 insertions(+), 21 deletions(-)
+
+diff --git a/js/src/vm/AsyncIteration.cpp b/js/src/vm/AsyncIteration.cpp
+index a6b2bafe558af..acbb36666160e 100644
+--- a/js/src/vm/AsyncIteration.cpp
++++ b/js/src/vm/AsyncIteration.cpp
+@@ -916,29 +916,11 @@ bool js::AsyncGeneratorReturn(JSContext* cx, unsigned argc, Value* vp) {
+     return false;
+   }
+ 
+-  // Step 7. Let state be generator.[[AsyncGeneratorState]].
+-  // Step 8. If state is either suspendedStart or completed, then
+-  if (generator->isSuspendedStart() || generator->isCompleted()) {
+-    // Step 8.a. Set generator.[[AsyncGeneratorState]] to awaiting-return.
+-    generator->setAwaitingReturn();
+-
+-    // Step 8.b. Perform ! AsyncGeneratorAwaitReturn(generator).
+-    if (!AsyncGeneratorAwaitReturn(cx, generator, completionValue)) {
+-      return false;
+-    }
+-  } else if (generator->isSuspendedYield()) {
+-    // Step 9. Else if state is suspendedYield, then
+-
+-    // Step 9.a. Perform ! AsyncGeneratorResume(generator, completion).
+-    if (!AsyncGeneratorUnwrapYieldResumptionAndResume(
+-            cx, generator, CompletionKind::Return, completionValue)) {
++  // Steps 7-10.
++  if (!generator->isExecuting() && !generator->isAwaitingYieldReturn()) {
++    if (!AsyncGeneratorDrainQueue(cx, generator)) {
+       return false;
+     }
+-  } else {
+-    // Step 10. Else,
+-    // Step 10.a. Assert: state is either executing or awaiting-return.
+-    MOZ_ASSERT(generator->isExecuting() || generator->isAwaitingReturn() ||
+-               generator->isAwaitingYieldReturn());
+   }
+ 
+   // Step 11. Return promiseCapability.[[Promise]].
+From 9a76402a4a10fad197ce8bd1fdb3836b7610a711 Mon Sep 17 00:00:00 2001
+From: Tooru Fujisawa <arai_a@mac.com>
+Date: Wed, 19 Jun 2024 16:31:27 +0000
+Subject: [PATCH] Bug 1901411 - Part 5: Revert inlining of
+ AsyncGeneratorDrainQueue in AsyncGeneratorThrow. r=mgaudet,jandem
+
+Differential Revision: https://phabricator.services.mozilla.com/D213355
+---
+ js/src/vm/AsyncIteration.cpp | 43 ++++++------------------------------
+ 1 file changed, 7 insertions(+), 36 deletions(-)
+
+diff --git a/js/src/vm/AsyncIteration.cpp b/js/src/vm/AsyncIteration.cpp
+index acbb36666160e..f07a1e32670f7 100644
+--- a/js/src/vm/AsyncIteration.cpp
++++ b/js/src/vm/AsyncIteration.cpp
+@@ -965,44 +965,15 @@ bool js::AsyncGeneratorThrow(JSContext* cx, unsigned argc, Value* vp) {
+     return false;
+   }
+ 
+-  // Step 5. Let state be generator.[[AsyncGeneratorState]].
+-  // Step 6. If state is suspendedStart, then
+-  if (generator->isSuspendedStart()) {
+-    // Step 6.a. Set generator.[[AsyncGeneratorState]] to completed.
+-    // Step 6.b. Set state to completed.
+-    generator->setCompleted();
+-  }
+-
+-  // Step 7. If state is completed, then
+-  if (generator->isCompleted()) {
+-    // Step 7.a. Perform
+-    //           ! Call(promiseCapability.[[Reject]], undefined, « exception »).
+-    if (!RejectPromiseInternal(cx, resultPromise, completionValue)) {
+-      return false;
+-    }
+-  } else {
+-    // Step 8. Let completion be ThrowCompletion(exception).
+-    // Step 9. Perform
+-    //         ! AsyncGeneratorEnqueue(generator, completion,
+-    //                                 promiseCapability).
+-    if (!AsyncGeneratorEnqueue(cx, generator, CompletionKind::Throw,
+-                               completionValue, resultPromise)) {
++  // Steps 5-11.
++  if (!AsyncGeneratorEnqueue(cx, generator, CompletionKind::Throw,
++                             completionValue, resultPromise)) {
++    return false;
++  }
++  if (!generator->isExecuting() && !generator->isAwaitingYieldReturn()) {
++    if (!AsyncGeneratorDrainQueue(cx, generator)) {
+       return false;
+     }
+-
+-    // Step 10. If state is suspendedYield, then
+-    if (generator->isSuspendedYield()) {
+-      // Step 10.a. Perform ! AsyncGeneratorResume(generator, completion).
+-      if (!AsyncGeneratorResume(cx, generator, CompletionKind::Throw,
+-                                completionValue)) {
+-        return false;
+-      }
+-    } else {
+-      // Step 11. Else,
+-      // Step 11.a. Assert: state is either executing or awaiting-return.
+-      MOZ_ASSERT(generator->isExecuting() || generator->isAwaitingReturn() ||
+-                 generator->isAwaitingYieldReturn());
+-    }
+   }
+ 
+   // Step 7.b. Return promiseCapability.[[Promise]].
+From 1ab696252ab8e31e5b7a70b1de4cee87755da02c Mon Sep 17 00:00:00 2001
+From: Tooru Fujisawa <arai_a@mac.com>
+Date: Wed, 19 Jun 2024 16:31:28 +0000
+Subject: [PATCH] Bug 1901411 - Part 6: Revert inlining of
+ AsyncGeneratorDrainQueue in AsyncGeneratorYield. r=mgaudet,jandem
+
+Differential Revision: https://phabricator.services.mozilla.com/D213356
+---
+ js/src/vm/AsyncIteration.cpp | 67 +++---------------------------------
+ 1 file changed, 5 insertions(+), 62 deletions(-)
+
+diff --git a/js/src/vm/AsyncIteration.cpp b/js/src/vm/AsyncIteration.cpp
+index f07a1e32670f7..90af49b59dd0f 100644
+--- a/js/src/vm/AsyncIteration.cpp
++++ b/js/src/vm/AsyncIteration.cpp
+@@ -304,37 +304,6 @@ AsyncGeneratorRequest* AsyncGeneratorRequest::create(
+   return AsyncGeneratorResume(cx, generator, CompletionKind::Throw, reason);
+ }
+ 
+-// ES2022 draft rev 193211a3d889a61e74ef7da1475dfa356e029f29
+-//
+-// AsyncGeneratorUnwrapYieldResumption ( resumptionValue )
+-// https://tc39.es/ecma262/#sec-asyncgeneratorunwrapyieldresumption
+-//
+-// Steps 1-2.
+-[[nodiscard]] static bool AsyncGeneratorUnwrapYieldResumptionAndResume(
+-    JSContext* cx, Handle<AsyncGeneratorObject*> generator,
+-    CompletionKind completionKind, HandleValue resumptionValue) {
+-  // Step 1. If resumptionValue.[[Type]] is not return, return
+-  //         Completion(resumptionValue).
+-  if (completionKind != CompletionKind::Return) {
+-    return AsyncGeneratorResume(cx, generator, completionKind, resumptionValue);
+-  }
+-
+-  // Step 2. Let awaited be Await(resumptionValue.[[Value]]).
+-  //
+-  // Since we don't have the place that handles return from yield
+-  // inside the generator, handle the case here, with extra state
+-  // State_AwaitingYieldReturn.
+-  generator->setAwaitingYieldReturn();
+-
+-  const PromiseHandler onFulfilled =
+-      PromiseHandler::AsyncGeneratorYieldReturnAwaitedFulfilled;
+-  const PromiseHandler onRejected =
+-      PromiseHandler::AsyncGeneratorYieldReturnAwaitedRejected;
+-
+-  return InternalAsyncGeneratorAwait(cx, generator, resumptionValue,
+-                                     onFulfilled, onRejected);
+-}
+-
+ // ES2022 draft rev 193211a3d889a61e74ef7da1475dfa356e029f29
+ //
+ // AsyncGeneratorYield ( value )
+@@ -343,6 +312,9 @@ AsyncGeneratorRequest* AsyncGeneratorRequest::create(
+ // Stesp 10-13.
+ [[nodiscard]] static bool AsyncGeneratorYield(
+     JSContext* cx, Handle<AsyncGeneratorObject*> generator, HandleValue value) {
++  // Step 13.a.
++  generator->setSuspendedYield();
++
+   // Step 10. Perform
+   //          ! AsyncGeneratorCompleteStep(generator, completion, false,
+   //                                       previousRealm).
+@@ -350,37 +322,8 @@ AsyncGeneratorRequest* AsyncGeneratorRequest::create(
+     return false;
+   }
+ 
+-  // Step 11. Let queue be generator.[[AsyncGeneratorQueue]].
+-  // Step 12. If queue is not empty, then
+-  // Step 13. Else,
+-  // (reordered)
+-  if (generator->isQueueEmpty()) {
+-    // Step 13.a. Set generator.[[AsyncGeneratorState]] to suspendedYield.
+-    generator->setSuspendedYield();
+-
+-    // Steps 13.b-c are done in caller.
+-
+-    // Step 13.d. Return undefined.
+-    return true;
+-  }
+-
+-  // Step 12. If queue is not empty, then
+-  // Step 12.a. NOTE: Execution continues without suspending the generator.
+-
+-  // Step 12.b. Let toYield be the first element of queue.
+-  Rooted<AsyncGeneratorRequest*> toYield(
+-      cx, AsyncGeneratorObject::peekRequest(generator));
+-  if (!toYield) {
+-    return false;
+-  }
+-
+-  // Step 12.c. Let resumptionValue be toYield.[[Completion]].
+-  CompletionKind completionKind = toYield->completionKind();
+-  RootedValue resumptionValue(cx, toYield->completionValue());
+-
+-  // Step 12.d. Return AsyncGeneratorUnwrapYieldResumption(resumptionValue).
+-  return AsyncGeneratorUnwrapYieldResumptionAndResume(
+-      cx, generator, completionKind, resumptionValue);
++  // Steps 11-13.
++  return AsyncGeneratorDrainQueue(cx, generator);
+ }
+ 
+ // ES2022 draft rev 193211a3d889a61e74ef7da1475dfa356e029f29

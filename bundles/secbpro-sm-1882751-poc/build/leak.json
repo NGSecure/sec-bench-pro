@@ -1,0 +1,13 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "d6d6aababd5b2aa1d622fe4f56a1e60c167c5547"
+  ],
+  "target_files": [
+    "js/src/jit/MacroAssembler.cpp",
+    "js/src/wasm/WasmGcObject.h"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

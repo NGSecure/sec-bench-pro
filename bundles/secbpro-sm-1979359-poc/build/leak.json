@@ -1,0 +1,13 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "56674d4f9366"
+  ],
+  "target_files": [
+    "js/src/ds/Bitmap.h",
+    "js/src/gc/AtomMarking-inl.h"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

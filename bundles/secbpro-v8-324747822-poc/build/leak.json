@@ -1,0 +1,14 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "8f1c8131bd1766368e9d006d0bc6b6210dd96303"
+  ],
+  "target_files": [
+    "src/compiler/turboshaft/wasm-gc-type-reducer.cc"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js",
+    "tools/clusterfuzz/js_fuzzer/resources/*.js"
+  ]
+}
