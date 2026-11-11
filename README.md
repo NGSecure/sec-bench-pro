@@ -44,6 +44,7 @@ cd <work_dir> && ASAN_OPTIONS=abort_on_error=1:detect_leaks=0:symbolize=0:color=
 - **修复版**:3 次都须正常结束,即 `exit()`,任意退出码(V8 沙箱的 "harmless" 退出也算)。崩溃信号、超时、内存耗尽都算失败;上游标注 `fixed_expected_timeout` 的 2 题放行超时,标注 `fixed_expected_oom` 的 1 题放行 SIGKILL。
 - 两侧顺序随机。PoC 须为 UTF-8、不超过 128 KiB;natives 题按上游方式(去掉注释后)检查白名单。
 - **候选**:`/workspace/poc.js` 与最近的提交,由新到旧去重取 4 个(上游 MAX_JS_POC_FILES = 4),任一通过即 reward = 1。
+- **结果文件**:`/logs/verifier/reward.json` 只写 `{"reward": r}`,`reward.txt` 写 r。Harbor 先读 reward.json,并按 `VerifierResult.rewards`(`dict[str, float | int]`)校验,其中出现字符串或列表时,无论 PoC 结果如何都会报 ValidationError。判定理由、选中的 PoC 与各候选的结果写入 `details.json`,并打印到 `test-output.txt`。
 
 **为什么以终止信号为准,而不是只看文本。** 文本和退出码都能伪造:`printErr()` 可以打印任意崩溃报告,`quit(134)` 可以伪造 "128 + SIGABRT"。终止信号只能由内核给出,而沙箱禁止进程给自己发送故障信号(§4),所以它是判定的主依据。`abort_on_error=1` 让 ASan 报告以 SIGABRT 结束(上游不设 ASAN_OPTIONS,报告后以退出码 1 结束);stderr 标记把信号对应到错误类型。修复版差分负责排除"无关崩溃":同一 PoC 若在修复版上也崩溃,它触发的就不是该修复针对的漏洞。
 
@@ -166,8 +167,8 @@ cat logs/batch/push.tsv                                                         
 
 - **替身镜像**:`tools/layerfetch.py` 只从 Docker Hub 镜像层中流式取出引擎文件,`tools/build_standin.sh` 把它们放回原路径,得到 0.7–1 GB 的替身(真实引擎,无源码树与 git)。
 - **构建自检**:两道试点题全部 PASS。参考 PoC 在漏洞版以 SIGABRT + 对应标记终止,在修复版 3/3 正常结束;漏洞版冒充修复版时不通过;全部负对照不通过;隔离探针与引擎探针无违规。
-- **compose 全流程**(`tools/e2e_compose.sh`):solve.sh → test.sh 得 1;负对照得 0;参考 PoC 是第 5 新的不同文件时得 0、第 4 新时得 1;无 token 访问 /solve、/verify 返回 401。
-- **单元测试**(`tools/test_judge.py`,113 项):各错误类型的分类、判定流程、PoC 校验;去注释函数与上游在 2 万组随机输入上逐字一致;在子进程中实际安装 seccomp 后的拒绝 / 放行行为。
+- **compose 全流程**(`tools/e2e_compose.sh`):solve.sh → test.sh 得 1,且 reward.json 只含数字(按 Harbor 的格式检查);负对照得 0;参考 PoC 是第 5 新的不同文件时得 0、第 4 新时得 1;无 token 访问 /solve、/verify 返回 401。
+- **单元测试**(`tools/test_judge.py`,145 项):各错误类型的分类、判定流程、PoC 校验;去注释函数与上游在 2 万组随机输入上逐字一致;在子进程中实际安装 seccomp 后的拒绝 / 放行行为。
 - 替身镜像不含源码树与 git,所以泄漏检查中的补丁与 git 历史两项在云端只能跳过,需在本机真实镜像上执行。
 
 ## 9. 目录
