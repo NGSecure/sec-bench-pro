@@ -1,0 +1,15 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "c82024befbfe8458e0482f2f24c9f69361b56e75"
+  ],
+  "target_files": [
+    "src/builtins/builtins-internal-gen.cc",
+    "src/codegen/code-stub-assembler.cc"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js",
+    "tools/clusterfuzz/js_fuzzer/resources/*.js"
+  ]
+}

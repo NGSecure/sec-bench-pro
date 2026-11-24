@@ -1,0 +1,15 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "53d1ddc4ff30d73d15b0b2c1cfe7da04b1a4f906"
+  ],
+  "target_files": [
+    "src/compiler/wasm-compiler.cc",
+    "src/wasm/wasm-js.cc"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js",
+    "tools/clusterfuzz/js_fuzzer/resources/*.js"
+  ]
+}

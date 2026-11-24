@@ -1,0 +1,15 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "2e29a3d3d930453174717fd963413492a80b31ec",
+    "2add863ab5962171d2c0f0b594ca4b3325744ffd"
+  ],
+  "target_files": [
+    "js/src/builtin/FinalizationRegistryObject.cpp",
+    "js/src/builtin/FinalizationRegistryObject.h",
+    "js/src/gc/FinalizationObservers.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

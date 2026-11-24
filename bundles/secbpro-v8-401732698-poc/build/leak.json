@@ -1,0 +1,16 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "b887b9161acac9d1b13dee460d045e8a55d93b27"
+  ],
+  "target_files": [
+    "src/common/ptr-compr-inl.h",
+    "src/common/ptr-compr.h",
+    "src/objects/tagged-field-inl.h"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js",
+    "tools/clusterfuzz/js_fuzzer/resources/*.js"
+  ]
+}

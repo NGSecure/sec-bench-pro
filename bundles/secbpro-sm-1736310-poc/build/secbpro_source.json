@@ -1,0 +1,50 @@
+{
+  "upstream_repo": "https://github.com/SEC-bench/SEC-bench-Pro",
+  "upstream_commit": "da80928ee20dc417ca6a068a1213e1d9d279df20",
+  "instance": "projects/sm/1736310",
+  "vuln_image": "hwiwonlee/sm.x86_64:1736310@sha256:f8e5c15586758f283d9d651e0cc6ba6090e9973c56f505d48c993fceb604dc1f",
+  "fixed_image": "hwiwonlee/sm.x86_64.fixed:1736310@sha256:bae63e370fda94abfdd53d51209a296972218b9fdb46dabb993d6d4b8f9cd31d",
+  "fix_patches": [
+    "0001-fix-from-git-a05bddc2ecd5.patch"
+  ],
+  "meta": {
+    "image_name": "hwiwonlee/sm.x86_64:1736310",
+    "work_dir": "/src/gecko-dev",
+    "target_source_files": [
+      "js/public/GCHashTable.h",
+      "js/public/GCVector.h",
+      "js/public/SweepingAPI.h",
+      "js/src/gc/Sweeping.cpp",
+      "js/src/vm/ArrayBufferObject.h"
+    ],
+    "target_subdir": [
+      "js/public",
+      "js/src/gc",
+      "js/src/vm"
+    ],
+    "command_options": "--fuzzing-safe --ion-offthread-compile=off",
+    "verification_binary": "/out/js",
+    "target_vulnerability_type": "Use-after-free",
+    "error_type": "RUNTIME_CRASH",
+    "description": "When a GCVector held by WeakCache stored deferred references to a TypedArray buffer that was later detached during a setElement valueOf callback under gczeal(9), the existing needsSweep() method (which only reported emptiness, not sweep need) fell through to the GCPolicy path without sweeping, leaving the typed array pointing at a detached ArrayBuffer — hitting !obj->hasDetachedBuffer() at TypedArrayObject.cpp:1021. sec-high GC/buffer-detach assert. Fix: replace WeakCache::needsSweep with empty() and add a proper sweep path for GCPolicy (git a05bddc2ecd5, jcoppeard, 2021-10-18).",
+    "fix_commits": [
+      "a05bddc2ecd5"
+    ],
+    "fixes": [
+      {
+        "kind": "patch_file",
+        "path": "patches/0001-fix-from-git-a05bddc2ecd5.patch",
+        "apply_in_gecko_repo": true,
+        "role": "primary",
+        "sequence": 1,
+        "description": "Bug 1736310 fix",
+        "source_commit": "a05bddc2ecd5",
+        "commit": "a05bddc2ecd5",
+        "url": "https://github.com/mozilla/gecko-dev/commit/a05bddc2ecd5",
+        "source_url": "https://github.com/mozilla/gecko-dev/commit/a05bddc2ecd5"
+      }
+    ],
+    "vrp": null
+  },
+  "note": "build/ only: never copied into an image the agent sees (meta.description included)."
+}

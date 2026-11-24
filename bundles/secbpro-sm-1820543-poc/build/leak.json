@@ -1,0 +1,12 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "533d5be1269d680dbef53e0116a917f1a7485e9d"
+  ],
+  "target_files": [
+    "js/src/gc/Compacting.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

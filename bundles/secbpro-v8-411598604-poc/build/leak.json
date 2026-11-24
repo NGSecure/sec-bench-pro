@@ -1,0 +1,16 @@
+{
+  "work_dir": "/src/v8",
+  "fix_commits": [
+    "41614e86a3e9f3b94f7bb36d83cd9f0fb1c52a17",
+    "21fcc74333ed48097025343dcdb70227e04f933c"
+  ],
+  "target_files": [
+    "src/heap/large-spaces.cc",
+    "src/heap/page-pool.cc"
+  ],
+  "shared_libraries": [
+    "test/mjsunit/mjsunit.js",
+    "test/mjsunit/wasm/wasm-module-builder.js",
+    "tools/clusterfuzz/js_fuzzer/resources/*.js"
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "engine": "v8",
+  "instance_id": "327740539",
+  "work_dir": "/src/v8",
+  "binary": "out/x64.asan/d8",
+  "options": "--allow-natives-syntax --fuzzing --stress-background-compile --parallel-compile-tasks-for-lazy",
+  "error_type": "RUNTIME_CRASH",
+  "timeout_sec": 300,
+  "attempts": 3,
+  "max_poc_bytes": 131072,
+  "native_allowlist": [
+    "CompileBaseline",
+    "DebugPrint",
+    "DeoptimizeFunction",
+    "GetHoleNaNLower",
+    "GetHoleNaNUpper",
+    "GetOptimizationStatus",
+    "InternalizeString",
+    "OptimizeFunctionOnNextCall",
+    "OptimizeMaglevOnNextCall",
+    "PrepareFunctionForOptimization",
+    "SetAllocationTimeout",
+    "TypedArraySet",
+    "WasmTierUpFunction"
+  ],
+  "asan_options": "abort_on_error=1:detect_leaks=0:symbolize=0:color=never",
+  "fixed_timeout_ok": false,
+  "fixed_oom_ok": false,
+  "disable_aslr": false
+}

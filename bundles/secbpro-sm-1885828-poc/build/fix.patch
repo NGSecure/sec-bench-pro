@@ -1,0 +1,50 @@
+From 691384c30df255fd95ffd6e332c4d6df6a36f2a6 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Andr=C3=A9=20Bargull?= <andre.bargull@gmail.com>
+Date: Thu, 21 Mar 2024 16:48:43 +0000
+Subject: [PATCH] Bug 1885828: Make MSubstr non-movable. r=jandem
+
+Differential Revision: https://phabricator.services.mozilla.com/D204882
+---
+ js/src/jit/MIROps.yaml | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/js/src/jit/MIROps.yaml b/js/src/jit/MIROps.yaml
+index 111f11b197ad8..95b054a95cdea 100644
+--- a/js/src/jit/MIROps.yaml
++++ b/js/src/jit/MIROps.yaml
+@@ -1331,7 +1331,6 @@
+   folds_to: custom
+   congruent_to: if_operands_equal
+   alias_set: none
+-  movable: true
+   can_recover: true
+ 
+ - name: ModuleMetadata
+From 4375a963137fa99440dc032d2a0251ea2c3db7ca Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Andr=C3=A9=20Bargull?= <andre.bargull@gmail.com>
+Date: Thu, 20 Jun 2024 16:25:42 +0000
+Subject: [PATCH] Bug 1885828: Add test case. r=jandem
+
+Depends on D204882
+
+Differential Revision: https://phabricator.services.mozilla.com/D204883
+---
+ js/src/jit-test/tests/ion/substr-non-movable.js | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+ create mode 100644 js/src/jit-test/tests/ion/substr-non-movable.js
+
+diff --git a/js/src/jit-test/tests/ion/substr-non-movable.js b/js/src/jit-test/tests/ion/substr-non-movable.js
+new file mode 100644
+index 0000000000000..db9fd8b44ad80
+--- /dev/null
++++ b/js/src/jit-test/tests/ion/substr-non-movable.js
+@@ -0,0 +1,9 @@
++// |jit-test| --fast-warmup; --ion-offthread-compile=off
++
++function f(from, expected) {
++  for (let i = 0; i < 100; ++i) {
++    assertEq("abcdefgh".slice(from), expected);
++  }   
++}
++f(1, "bcdefgh");
++f(-1, "h");

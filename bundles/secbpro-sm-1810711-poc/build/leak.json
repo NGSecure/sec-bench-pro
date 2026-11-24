@@ -1,0 +1,13 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "5461a647546a79ff479804263a3b7ef114eaf0f7",
+    "5635e34af97fedb56260a73656793a6bbf9cb44d"
+  ],
+  "target_files": [
+    "js/src/vm/ErrorObject.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

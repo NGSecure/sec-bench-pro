@@ -1,0 +1,14 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "1dc7af44dc9d04a81404d7f717d359642dd612c2"
+  ],
+  "target_files": [
+    "js/src/jit/MIROps.yaml",
+    "js/src/jit/Recover.cpp",
+    "js/src/jit/Recover.h"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

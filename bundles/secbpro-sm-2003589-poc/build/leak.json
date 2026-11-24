@@ -1,0 +1,16 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "1d09788fc823"
+  ],
+  "target_files": [
+    "js/src/builtin/Object.cpp",
+    "js/src/jit/CodeGenerator.cpp",
+    "js/src/jit/VMFunctionList-inl.h",
+    "js/src/vm/Iteration.cpp",
+    "js/src/vm/Iteration.h"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

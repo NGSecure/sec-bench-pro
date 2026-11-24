@@ -1,0 +1,12 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "cd226ea7e9d033ff1fb50bbfe82eefcea9d2f239"
+  ],
+  "target_files": [
+    "js/src/jit/CodeGenerator.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

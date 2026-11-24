@@ -1,0 +1,13 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "26125066c9f657eae22718920085779bb586b72b",
+    "836a941b54f44446fb75d9b3412fff630a433b25"
+  ],
+  "target_files": [
+    "js/src/gc/WeakMap-inl.h"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}
