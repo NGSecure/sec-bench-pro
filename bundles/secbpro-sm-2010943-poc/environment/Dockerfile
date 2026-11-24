@@ -13,7 +13,7 @@ FROM --platform=linux/amd64 ${VUL_IMAGE}
 WORKDIR /
 RUN set -eux; \
     rm -rf /tmp/secb-fix-patches /testcase/* /app/artifacts/* \
-      /root/.bash_history /root/.python_history /root/.lesshst; \
+      /root/.bash_history /root/.python_history /root/.lesshst /tmp/poc_test1.js /tmp/poc_test2.js; \
     mkdir -p /workspace; \
     command -v curl >/dev/null 2>&1 || command -v python3 >/dev/null 2>&1 \
       || { apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \

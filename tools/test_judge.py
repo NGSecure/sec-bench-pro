@@ -86,6 +86,24 @@ def test_classify():
     check("asan exit 1", not m("ASAN_CRASH", 1, asan(100)))
     check("asan SEGV signal", not m("ASAN_CRASH", SEGV, asan(100)))
     check("asan indented", not m("ASAN_CRASH", ABRT, "  ==100==ERROR: AddressSanitizer: x"))
+    # ASan's nested-error exit (status 1), counted only where judge.json sets asan_nested_exit
+    nested = ("AddressSanitizer:DEADLYSIGNAL\n" + asan(100, "SEGV on unknown address 0x000000000001")
+              + "==100==Hint: pc points to the zero page.\nAddressSanitizer:DEADLYSIGNAL\n"
+              + "AddressSanitizer: nested bug in the same thread, aborting.\n")
+    on = lambda rc, err, pid=100: ts.classify(rc, False, err, pid, error_type="ASAN_CRASH",
+                                              allowed=ts.TYPE_RULES["ASAN_CRASH"]["signals"], nested_exit=True)
+    r = on(1, nested)
+    check("asan nested exit: counted where enabled", r["matched"] and r["status"] == "crash"
+          and not ts.fixed_clean(r), r)
+    check("asan nested exit: not counted by default", not m("ASAN_CRASH", 1, nested))
+    check("asan nested exit: other pid's header", not on(1, nested, pid=99)["matched"])
+    check("asan nested exit: status 0", not on(0, nested)["matched"])
+    check("asan nested exit: must end stderr", not on(1, nested + "more output\n")["matched"])
+    check("asan nested exit: needs the report header",
+          not on(1, "AddressSanitizer: nested bug in the same thread, aborting.\n")["matched"])
+    check("asan nested exit: not for other error types",
+          not ts.classify(1, False, nested, 100, error_type="RUNTIME_CRASH", allowed=ts.CRASH_SIGNALS,
+                          nested_exit=True)["matched"])
     # DCHECK
     for rc in (TRAP, ABRT, ILL):
         check("dcheck %d" % rc, m("DCHECK", rc, "# Debug check failed: x == y."))
@@ -349,6 +367,102 @@ def test_seccomp():
     check("null read -> SIGSEGV", os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGSEGV, status)
 
 
+# x86-64 code that makes an i386 system call (int 0x80) from this 64-bit process, the way an
+# ia32 build of the engine does: seccomp sees it as AUDIT_ARCH_I386 with i386 numbers.
+# long f(nr, a0, a1, a2, a3, a4) -> eax sign-extended (-errno on failure)
+I386_TRAMPOLINE = bytes.fromhex(
+    "53"            # push rbx
+    "89f8"          # mov eax, edi        nr
+    "89f3"          # mov ebx, esi        a0
+    "4189ca"        # mov r10d, ecx       a2 (saved)
+    "89d1"          # mov ecx, edx        a1
+    "4489d2"        # mov edx, r10d       a2
+    "4489c6"        # mov esi, r8d        a3
+    "4489cf"        # mov edi, r9d        a4
+    "cd80"          # int 0x80
+    "4863c0"        # movsxd rax, eax
+    "5b"            # pop rbx
+    "c3")           # ret
+
+
+def i386_syscall():
+    import ctypes
+    import mmap
+    buf = mmap.mmap(-1, mmap.PAGESIZE, prot=mmap.PROT_READ | mmap.PROT_WRITE | mmap.PROT_EXEC)
+    buf.write(I386_TRAMPOLINE)
+    fn = ctypes.CFUNCTYPE(ctypes.c_long, *([ctypes.c_long] * 6))(
+        ctypes.addressof(ctypes.c_char.from_buffer(buf)))
+    fn.keep = buf
+    return lambda nr, *a: fn(nr, *(list(a) + [0] * (5 - len(a))))
+
+
+def test_seccomp_i386():
+    """The filter applies the same policy to i386 system calls (an ia32 build of d8 makes only
+    those) instead of killing the process on its first one."""
+    if sys.platform != "linux" or os.uname().machine != "x86_64":
+        print("skip  i386 seccomp tests (needs Linux x86-64)")
+        return
+    import errno as E
+    r, w = os.pipe()
+    pid = os.fork()
+    if pid == 0:                                  # unfiltered: is IA-32 emulation available?
+        os.close(r)
+        try:
+            ok = i386_syscall()(20) == os.getpid()
+        except BaseException:
+            ok = False
+        os.write(w, b"1" if ok else b"0")
+        os._exit(0)
+    os.close(w)
+    ok = os.read(r, 1) == b"1"
+    os.close(r)
+    os.waitpid(pid, 0)
+    if not ok:
+        print("skip  i386 seccomp tests (no IA-32 emulation in this kernel)")
+        return
+
+    def probe():
+        sc, me = i386_syscall(), os.getpid()
+        tid = threading.get_native_id()
+        signal.signal(signal.SIGUSR1, lambda *a: None)
+        res = {"getpid": sc(20) == me, "kill USR1": sc(37, me, signal.SIGUSR1),
+               "kill SEGV": sc(37, me, signal.SIGSEGV), "kill ABRT": sc(37, me, signal.SIGABRT),
+               "tkill BUS": sc(238, tid, signal.SIGBUS), "tgkill SEGV": sc(270, me, tid, signal.SIGSEGV),
+               "rt_sigqueueinfo ILL": sc(178, me, signal.SIGILL, 0),
+               "socket inet": sc(359, socket.AF_INET, socket.SOCK_STREAM, 0),
+               "socketcall SOCKET": sc(102, 1, 0), "socketcall SOCKETPAIR": sc(102, 8, 0),
+               "ipc SHMGET": sc(117, 23, 0, 0, 0), "ipc SHMGET version 1": sc(117, 0x10017, 0, 0, 0),
+               "ipc MSGGET": sc(117, 13, 0, 0), "ipc SEMOP": sc(117, 1, 0, 0, 0, 0),
+               "unshare": sc(310, 0x10000000), "clone no thread": sc(120, 0x800),
+               "clone thread": sc(120, 0x10000), "clone3": sc(435, 0, 0),
+               "ptrace": sc(26, 2, 0x3FFFFFFF, 0, 0), "umount2": sc(52, 0, 0xFFFFFFFF),
+               "execveat": sc(358, 0xFFFFFFFF, 0, 0, 0, 0), "pidfd_open": sc(434, me, 0xFFFFFFFF)}
+        fd = sc(359, socket.AF_UNIX, socket.SOCK_STREAM, 0)
+        res["socket unix"] = fd >= 0
+        if fd >= 0:
+            os.close(fd)
+        return res
+
+    status, res = in_child(probe)
+    check("i386: probe ran (no SIGSYS)", os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
+          and res and "exception" not in res, (status, res))
+    if not res or "exception" in res:
+        return
+    expect = {
+        "kill USR1": 0, "kill SEGV": -E.EPERM, "kill ABRT": -E.EPERM, "tkill BUS": -E.EPERM,
+        "tgkill SEGV": -E.EPERM, "rt_sigqueueinfo ILL": -E.EPERM, "socket inet": -E.EPERM,
+        "socketcall SOCKET": -E.EPERM, "socketcall SOCKETPAIR": -E.EFAULT,    # allowed: NULL args
+        "ipc SHMGET": -E.EPERM, "ipc SHMGET version 1": -E.EPERM, "ipc MSGGET": -E.EPERM,
+        "ipc SEMOP": -E.EINVAL,                                                # allowed: no sops
+        "unshare": -E.EPERM, "clone no thread": -E.EPERM, "clone thread": -E.EINVAL,  # allowed: no SIGHAND
+        "clone3": -E.ENOSYS, "ptrace": -E.EPERM, "umount2": -E.EPERM, "execveat": -E.EPERM,
+        "pidfd_open": -E.EPERM}
+    check("i386: getpid works", res["getpid"] is True, res)
+    check("i386: AF_UNIX socket works", res["socket unix"] is True, res)
+    for k, v in expect.items():
+        check("i386: %s -> %s" % (k, v), res[k] == v, (k, res[k]))
+
+
 def test_leak_check_libraries():
     """build/leak_check.py check 2: lines a PoC pastes in from a shared harness library are
     not its own; what remains must not be mostly in any one file."""
@@ -447,6 +561,181 @@ def test_leak_check_source_tree():
     check("leak tree: no repository -> cannot tell (None)", lc.tracked_predicate(plain) is None)
     shutil.rmtree(plain)
     shutil.rmtree(repo)
+
+
+
+def test_leak_check_fix_patch():
+    """build/leak_check.py check 1: files the fix adds must be absent (FAIL); a patch that does
+    not apply as a whole is checked hunk by hunk and reported as a NOTE (drift, a tree that
+    already has part or all of the fix), except when none of its files exists (FAIL)."""
+    sys.path.insert(0, os.path.join(HERE, os.pardir, "templates", "build"))
+    import leak_check as lc
+    import subprocess
+    root = tempfile.mkdtemp(prefix="secb_fixpatch_")
+
+    def git(repo, *a):
+        return subprocess.run(["git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@t",
+                               "-c", "commit.gpgsign=false"] + list(a),
+                              check=True, capture_output=True, text=True).stdout
+
+    def write(repo, rel, lines):
+        path = os.path.join(repo, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write("\n".join(lines) + "\n")
+
+    def tree(name, files):
+        d = os.path.join(root, name)
+        subprocess.run(["git", "init", "-q", d], check=True)
+        for rel, lines in files.items():
+            write(d, rel, lines)
+        return d
+
+    base_a = ["int filler_line_number_%02d = %d;" % (i, i) for i in range(40)]
+    base_b = ["double other_filler_line_%02d = %d.0;" % (i, i) for i in range(40)]
+    fix_a = base_a[:10] + ["  if (index >= length) return kOutOfBoundsAccessRejected;"] + base_a[10:]
+    fix_b = base_b[:30] + ["  CHECK_LT(offset, buffer_size_in_bytes_for_this_object);"] + base_b[31:]
+    src = tree("src", {"a.cc": base_a, "b.cc": base_b})
+    git(src, "add", ".")
+    git(src, "commit", "-q", "-m", "base")
+    write(src, "a.cc", fix_a)
+    write(src, "b.cc", fix_b)
+    code_patch = os.path.join(root, "code.patch")
+    with open(code_patch, "w") as f:
+        f.write(git(src, "diff"))
+    write(src, "test/regress-1.js", ["print('regression test of the fix');"])
+    git(src, "add", "-N", "test/regress-1.js")
+    full_patch = os.path.join(root, "full.patch")
+    with open(full_patch, "w") as f:
+        f.write(git(src, "diff"))
+
+    clean = tree("clean", {"a.cc": base_a, "b.cc": base_b})
+    fails, notes, rep = lc.fix_patch_check(clean, full_patch)
+    check("fix patch: applies forward -> PASS, no note", not fails and not notes
+          and rep["fix_patch_applies_forward"] and rep["files_added_by_fix"] == ["test/regress-1.js"],
+          (fails, notes, rep))
+    added = tree("added", {"a.cc": base_a, "b.cc": base_b, "test/regress-1.js": ["x"]})
+    fails, notes, rep = lc.fix_patch_check(added, full_patch)
+    check("fix patch: a file the fix adds exists -> FAIL", len(fails) == 1 and "regress-1.js" in fails[0],
+          (fails, notes))
+    drift_a = list(base_a)
+    drift_a[9], drift_a[10] = "int filler_line_number_09 = 9 + 0;", "int filler_line_number_10 = 10 + 0;"
+    drift = tree("drift", {"a.cc": drift_a, "b.cc": base_b})
+    fails, notes, rep = lc.fix_patch_check(drift, full_patch)
+    check("fix patch: drifted context, added code absent -> NOTE",
+          not fails and rep["fix_patch_hunks"] == {"N": 1, "F": 1}
+          and any("none of its added code" in n for n in notes), (fails, notes, rep))
+    fixed = tree("fixed", {"a.cc": fix_a, "b.cc": fix_b})
+    fails, notes, rep = lc.fix_patch_check(fixed, code_patch)
+    check("fix patch: the whole fix already in the tree -> NOTE (self-check 2/2 decides)",
+          not fails and rep["fix_patch_applies_reverse"] and any("reverse-applies" in n for n in notes),
+          (fails, notes, rep))
+    partial = tree("partial", {"a.cc": fix_a, "b.cc": base_b})
+    fails, notes, rep = lc.fix_patch_check(partial, code_patch)
+    check("fix patch: part of the fix already in the tree -> NOTE naming the hunk",
+          not fails and rep["fix_patch_hunks"] == {"R": 1, "F": 1}
+          and any("already in the tree" in n and "a.cc" in n for n in notes), (fails, notes, rep))
+    drift_present = list(fix_a)
+    drift_present[9] = "int filler_line_number_09 = 9 + 0;"
+    dp = tree("drift_present", {"a.cc": drift_present, "b.cc": base_b})
+    fails, notes, rep = lc.fix_patch_check(dp, code_patch)
+    check("fix patch: drifted hunk whose added code is there -> counted as already there",
+          not fails and rep["fix_patch_hunks"] == {"N": 1, "F": 1}
+          and any("already in the tree" in n for n in notes), (fails, notes, rep))
+    empty = tree("empty", {"other.cc": ["int x;"]})
+    fails, notes, rep = lc.fix_patch_check(empty, code_patch)
+    check("fix patch: no patched file exists -> FAIL (wrong work dir?)",
+          len(fails) == 1 and "wrong work dir" in fails[0], (fails, notes))
+    # mail-formatted, concatenated patches: hunks end by their line counts, not at "-- " signatures
+    da = git(src, "diff", "--", "a.cc")
+    db = git(src, "diff", "--", "b.cc")
+    mail = ("From 1111 Mon Sep 17 00:00:00 2001\nFrom: t <t@t>\nSubject: [PATCH 1/2] one\n\n---\n a.cc | 1 +\n\n"
+            + da + "-- \n2.43.0\n\nFrom 2222 Mon Sep 17 00:00:00 2001\nFrom: t <t@t>\nSubject: [PATCH 2/2] two\n\n"
+            + "---\n b.cc | 2 +-\n\n" + db + "-- \n2.43.0\n\n")
+    with open(os.path.join(root, "mail.patch"), "w") as f:
+        f.write(mail)
+    files = lc.patch_files(mail)
+    hunks = [h for f in files for h in f["hunks"]]
+    check("fix patch: mail format parsed by hunk counts",
+          [f["path"] for f in files] == ["a.cc", "b.cc"] and len(hunks) == 2
+          and not any(l.startswith("-- ") for h in hunks for l in h), [len(h) for h in hunks])
+    fails, notes, rep = lc.fix_patch_check(clean, os.path.join(root, "mail.patch"))
+    check("fix patch: mail-formatted patch applies -> PASS", not fails and not notes, (fails, notes))
+    mode = lc.patch_files("diff --git a/run.sh b/run.sh\nold mode 100644\nnew mode 100755\n")
+    check("fix patch: a mode-only diff is not a new file", len(mode) == 1 and not mode[0]["new"]
+          and mode[0]["path"] == "run.sh", mode)
+    shutil.rmtree(root)
+
+
+def test_runtime_plan():
+    """task_server.runtime_plan(): static and component builds, files one build has only."""
+    root = tempfile.mkdtemp(prefix="secb_rt_")
+    fixtop = os.path.join(root, "store", "fix")
+
+    def put(path, data, fix=None):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(data)
+        if fix is not None:
+            fp = fixtop + path
+            os.makedirs(os.path.dirname(fp), exist_ok=True)
+            with open(fp, "wb") as f:
+                f.write(fix)
+        return path
+
+    out = os.path.join(root, "src", "out")
+    exe = put(os.path.join(out, "d8"), b"\x7fELF vulnerable engine", b"\x7fELF fixed engine, longer")
+    snap = put(os.path.join(out, "snapshot_blob.bin"), b"snapshot", b"snapshot")
+    swap, same, pad, diff, only = ts.runtime_plan({exe, snap}, {exe, snap}, fixtop, exe)
+    check("runtime: static build -> the engine differs", swap == [exe] and same == [snap] and diff == [exe]
+          and pad == {exe: len(b"\x7fELF fixed engine, longer")} and only == {"vul": [], "fix": []},
+          (swap, same, pad, diff, only))
+    lib = put(os.path.join(out, "libv8.so"), b"\x7fELF libv8 vulnerable", b"\x7fELF libv8 fixed")
+    put(exe, b"\x7fELF launcher", b"\x7fELF launcher")
+    swap, same, pad, diff, only = ts.runtime_plan({exe, snap, lib}, {exe, snap, lib}, fixtop, exe)
+    check("runtime: component build -> identical launcher still placed, libv8.so differs",
+          swap == [exe, lib] and diff == [lib] and same == [snap], (swap, same, diff))
+    icu = put(os.path.join(root, "x", "icudtl.dat"), b"unused")
+    os.unlink(icu)
+    put(fixtop + icu, b"icu data")
+    old = put(os.path.join(out, "libold.so"), b"\x7fELF only in the vulnerable build")
+    swap, same, pad, diff, only = ts.runtime_plan({exe, snap, lib, old}, {exe, snap, lib, icu}, fixtop, exe)
+    check("runtime: files one build has -> placed for that build only",
+          only == {"vul": [old], "fix": [icu]} and diff == [lib], only)
+    put(lib, b"\x7fELF libv8 same", b"\x7fELF libv8 same")
+    for label, args in (("identical builds", ({exe, snap, lib}, {exe, snap, lib, icu})),
+                        ("engine missing from the fixed build", ({exe, snap}, {snap}))):
+        try:
+            ts.runtime_plan(args[0], args[1], fixtop, exe)
+            ok = False
+        except SystemExit as e:
+            ok = "prepare:" in str(e)
+        check("runtime: %s -> refused" % label, ok)
+    if os.geteuid() == 0:                      # place() chowns to root
+        saved = dict(ts.STATE), ts.STORE
+        try:
+            ts.STORE = os.path.join(root, "store")
+            put(os.path.join(ts.STORE, "vul") + old, b"\x7fELF only in the vulnerable build")
+            put(lib, b"\x7fELF libv8 vulnerable", b"\x7fELF libv8 fixed")
+            put(os.path.join(ts.STORE, "vul") + lib, b"\x7fELF libv8 vulnerable")
+            put(os.path.join(ts.STORE, "vul") + exe, b"\x7fELF launcher")
+            ts.STATE.clear()
+            ts.STATE.update(swap=[exe, lib], pad={lib: 32}, exe=exe, only={"vul": [old], "fix": [icu]})
+            ts.place("fix")
+            fixed_ok = (open(icu, "rb").read() == b"icu data" and not os.path.exists(old)
+                        and open(lib, "rb").read().rstrip(b"\0") == b"\x7fELF libv8 fixed"
+                        and os.path.getsize(lib) == 32 and (os.stat(exe).st_mode & 0o777) == 0o711)
+            ts.place("vul")
+            vul_ok = (not os.path.exists(icu) and open(old, "rb").read() == b"\x7fELF only in the vulnerable build"
+                      and open(lib, "rb").read().rstrip(b"\0") == b"\x7fELF libv8 vulnerable")
+            check("runtime: place() swaps one-sided files", fixed_ok and vul_ok, (fixed_ok, vul_ok))
+        finally:
+            ts.STATE.clear()
+            ts.STATE.update(saved[0])
+            ts.STORE = saved[1]
+    else:
+        print("skip  place() test (needs root)")
+    shutil.rmtree(root)
 
 
 STUB_DOCKER = r"""#!/usr/bin/env bash
@@ -622,9 +911,9 @@ def main():
     ap.add_argument("--upstream", help="SEC-bench Pro checkout (compares the comment stripper)")
     a = ap.parse_args()
     for t in (test_classify, test_fixed_clean, test_verify, test_reference_verdicts, test_validate,
-              lambda: test_strip(a.upstream), test_seccomp, test_leak_check_libraries,
-              test_leak_check_source_tree, test_build_sh_controls, test_probe_interpreter_modes,
-              test_verifier_reward_files):
+              lambda: test_strip(a.upstream), test_seccomp, test_seccomp_i386, test_leak_check_libraries,
+              test_leak_check_source_tree, test_leak_check_fix_patch, test_runtime_plan,
+              test_build_sh_controls, test_probe_interpreter_modes, test_verifier_reward_files):
         t()
     os.unlink(_cfg.name)
     print("%d checks, %d failed" % (COUNT[0], len(FAILS)))

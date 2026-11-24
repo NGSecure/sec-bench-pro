@@ -25,6 +25,6 @@ COPY environment/task-server/task_server.py environment/task-server/sandbox_exec
 COPY build/ground_truth.js /secb/ground_truth.js
 # Diff the builds, drop world-write permissions (runs must not leave state behind),
 # make /secb root-only. The engine becomes execute-only when the server starts.
-RUN python3 /secb/task_server.py --prepare
+RUN rm -f /tmp/poc_test1.js /tmp/poc_test2.js && python3 /secb/task_server.py --prepare
 EXPOSE 9111
 CMD ["python3", "-u", "/secb/task_server.py"]

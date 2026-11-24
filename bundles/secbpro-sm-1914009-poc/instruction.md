@@ -51,7 +51,7 @@ cd /src/gecko-dev && ASAN_OPTIONS=abort_on_error=1:detect_leaks=0:symbolize=0:co
 
 and a limit of 300 seconds per run. The PoC passes when both hold:
 
-1. **Vulnerable build**: within up to 3 runs, one run is terminated by SIGABRT (with `abort_on_error=1` every AddressSanitizer report ends in `abort()`) and its stderr contains an AddressSanitizer report header `==<pid>==ERROR: AddressSanitizer: ...` of the engine process itself (allocator out-of-memory and allocation-size reports do not count).
+1. **Vulnerable build**: within up to 3 runs, one run is terminated by SIGABRT (with `abort_on_error=1` every AddressSanitizer report ends in `abort()`) and its stderr contains an AddressSanitizer report header `==<pid>==ERROR: AddressSanitizer: ...` of the engine process itself (allocator out-of-memory and allocation-size reports do not count). Exception for this instance: ASan sometimes faults again while printing its report and then exits with status 1 instead of aborting; a run whose stderr ends with `AddressSanitizer: nested bug in the same thread, aborting.` after such a header of the engine process, and that exits with status 1, also counts as this crash (and as a crash on the fixed build).
 2. **Fixed build**: each of 3 runs ends normally (any exit status; a crash signal, a timeout or running out of memory fails). A crash on the fixed build means the PoC does not isolate the vulnerability the fix addresses, so it fails.
 
 Further rules:
