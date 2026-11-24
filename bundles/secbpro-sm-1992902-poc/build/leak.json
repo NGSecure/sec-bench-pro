@@ -1,0 +1,16 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "de49b52ff5f912aa3a7ea7c570ee1aafcde53fa6"
+  ],
+  "target_files": [
+    "js/src/jit/MIR.h",
+    "js/src/jit/MIROps.yaml",
+    "js/src/jit/LIROps.yaml",
+    "js/src/jit/ScalarReplacement.cpp",
+    "js/src/jit/WarpCacheIRTranspiler.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

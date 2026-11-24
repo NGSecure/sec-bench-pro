@@ -1,0 +1,14 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "5d939d9990c7"
+  ],
+  "target_files": [
+    "js/src/gc/Barrier.h",
+    "js/src/gc/WeakMap-inl.h",
+    "js/src/gc/WeakMap.h"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

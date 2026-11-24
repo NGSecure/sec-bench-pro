@@ -1,0 +1,15 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "c8104bed78889aaebf43316c1ba6acf61bb3a8ba"
+  ],
+  "target_files": [
+    "js/src/vm/Scope.cpp",
+    "js/src/builtin/ModuleObject.cpp",
+    "js/src/vm/EnvironmentObject.h",
+    "js/src/vm/Modules.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

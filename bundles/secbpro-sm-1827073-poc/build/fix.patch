@@ -1,0 +1,334 @@
+From af7bb7c7c1031ae7fe82f6aa63b9e1e757af7e1a Mon Sep 17 00:00:00 2001
+From: Jan de Mooij <jdemooij@mozilla.com>
+Date: Wed, 12 Apr 2023 04:51:21 +0000
+Subject: [PATCH] Bug 1827073 part 1 - Remove unused ReadFrame_Formals. r=iain
+
+Differential Revision: https://phabricator.services.mozilla.com/D175112
+---
+ js/src/jit/JSJitFrameIter.h | 9 +--------
+ 1 file changed, 1 insertion(+), 8 deletions(-)
+
+diff --git a/js/src/jit/JSJitFrameIter.h b/js/src/jit/JSJitFrameIter.h
+index 0024ff8750cd6..f62eb5dbcf0be 100644
+--- a/js/src/jit/JSJitFrameIter.h
++++ b/js/src/jit/JSJitFrameIter.h
+@@ -76,9 +76,6 @@ enum class FrameType {
+ };
+ 
+ enum ReadFrameArgsBehavior {
+-  // Only read formals (i.e. [0 ... callee()->nargs]
+-  ReadFrame_Formals,
+-
+   // Only read overflown args (i.e. [callee()->nargs ... numActuals()]
+   ReadFrame_Overflown,
+ 
+@@ -240,10 +237,6 @@ class JSJitFrameIter {
+     unsigned nactual = numActualArgs();
+     unsigned start, end;
+     switch (behavior) {
+-      case ReadFrame_Formals:
+-        start = 0;
+-        end = callee()->nargs();
+-        break;
+       case ReadFrame_Overflown:
+         start = callee()->nargs();
+         end = nactual;
+@@ -690,7 +683,7 @@ class InlineFrameIterator {
+                                 fallback);
+       }
+ 
+-      if (behavior != ReadFrame_Formals) {
++      if (nactual > nformal) {
+         if (more()) {
+           // There is still a parent frame of this inlined frame.  All
+           // arguments (also the overflown) are the last pushed values
+From 9c190ac9cba9de260ebcc12048ceb00f9370142b Mon Sep 17 00:00:00 2001
+From: Jan de Mooij <jdemooij@mozilla.com>
+Date: Wed, 12 Apr 2023 04:51:21 +0000
+Subject: [PATCH] Bug 1827073 part 2 - Remove ReadFrame_Overflown and simplify
+ unaliasedForEachActual. r=iain
+
+The only consumer of `ReadFrame_Overflown` is some debug dumping code where we
+want to skip the formal arguments. It's simpler to skip the formals there so
+that we can simplify the `unaliasedForEachActual` method.
+
+Depends on D175112
+
+Differential Revision: https://phabricator.services.mozilla.com/D175113
+---
+ js/src/jit/JSJitFrameIter.h | 27 +++++----------------------
+ js/src/jit/JitFrames.cpp    | 21 ++++++++++++---------
+ js/src/vm/FrameIter-inl.h   |  8 +++-----
+ 3 files changed, 20 insertions(+), 36 deletions(-)
+
+diff --git a/js/src/jit/JSJitFrameIter.h b/js/src/jit/JSJitFrameIter.h
+index f62eb5dbcf0be..3893dda4471cd 100644
+--- a/js/src/jit/JSJitFrameIter.h
++++ b/js/src/jit/JSJitFrameIter.h
+@@ -76,9 +76,6 @@ enum class FrameType {
+ };
+ 
+ enum ReadFrameArgsBehavior {
+-  // Only read overflown args (i.e. [callee()->nargs ... numActuals()]
+-  ReadFrame_Overflown,
+-
+   // Read all args (i.e. [0 ... numActuals()])
+   ReadFrame_Actuals
+ };
+@@ -231,23 +228,12 @@ class JSJitFrameIter {
+   MachineState machineState() const;
+ 
+   template <class Op>
+-  void unaliasedForEachActual(Op op, ReadFrameArgsBehavior behavior) const {
++  void unaliasedForEachActual(Op op) const {
+     MOZ_ASSERT(isBaselineJS());
+ 
+     unsigned nactual = numActualArgs();
+-    unsigned start, end;
+-    switch (behavior) {
+-      case ReadFrame_Overflown:
+-        start = callee()->nargs();
+-        end = nactual;
+-        break;
+-      case ReadFrame_Actuals:
+-        start = 0;
+-        end = nactual;
+-    }
+-
+     Value* argv = actualArgs();
+-    for (unsigned i = start; i < end; i++) {
++    for (unsigned i = 0; i < nactual; i++) {
+       op(argv[i]);
+     }
+   }
+@@ -678,10 +664,8 @@ class InlineFrameIterator {
+       // Get the non overflown arguments, which are taken from the inlined
+       // frame, because it will have the updated value when JSOp::SetArg is
+       // done.
+-      if (behavior != ReadFrame_Overflown) {
+-        s.readFunctionFrameArgs(argOp, argsObj, thisv, 0, nformal, script(),
+-                                fallback);
+-      }
++      s.readFunctionFrameArgs(argOp, argsObj, thisv, 0, nformal, script(),
++                              fallback);
+ 
+       if (nactual > nformal) {
+         if (more()) {
+@@ -735,11 +719,10 @@ class InlineFrameIterator {
+ 
+   template <class Op>
+   void unaliasedForEachActual(JSContext* cx, Op op,
+-                              ReadFrameArgsBehavior behavior,
+                               MaybeReadFallback& fallback) const {
+     Nop nop;
+     readFrameArgsAndLocals(cx, op, nop, nullptr, nullptr, nullptr, nullptr,
+-                           nullptr, behavior, fallback);
++                           nullptr, ReadFrame_Actuals, fallback);
+   }
+ 
+   JSScript* script() const { return script_; }
+diff --git a/js/src/jit/JitFrames.cpp b/js/src/jit/JitFrames.cpp
+index bbb9839bd4229..fd65289e61b52 100644
+--- a/js/src/jit/JitFrames.cpp
++++ b/js/src/jit/JitFrames.cpp
+@@ -2383,17 +2383,21 @@ void SnapshotIterator::warnUnreadableAllocation() {
+           "f.arguments).\n");
+ }
+ 
+-struct DumpOp {
+-  explicit DumpOp(unsigned int i) : i_(i) {}
++struct DumpOverflownOp {
++  const unsigned numFormals_;
++  unsigned i_ = 0;
++
++  explicit DumpOverflownOp(unsigned numFormals) : numFormals_(numFormals) {}
+ 
+-  unsigned int i_;
+   void operator()(const Value& v) {
+-    fprintf(stderr, "  actual (arg %u): ", i_);
++    if (i_ >= numFormals_) {
++      fprintf(stderr, "  actual (arg %u): ", i_);
+ #if defined(DEBUG) || defined(JS_JITSPEW)
+-    DumpValue(v);
++      DumpValue(v);
+ #else
+-    fprintf(stderr, "?\n");
++      fprintf(stderr, "?\n");
+ #endif
++    }
+     i_++;
+   }
+ };
+@@ -2443,9 +2447,8 @@ void InlineFrameIterator::dump() const {
+       } else {
+         if (i - 2 == calleeTemplate()->nargs() &&
+             numActualArgs() > calleeTemplate()->nargs()) {
+-          DumpOp d(calleeTemplate()->nargs());
+-          unaliasedForEachActual(TlsContext.get(), d, ReadFrame_Overflown,
+-                                 fallback);
++          DumpOverflownOp d(calleeTemplate()->nargs());
++          unaliasedForEachActual(TlsContext.get(), d, fallback);
+         }
+ 
+         fprintf(stderr, "  slot %d: ", int(i - 2 - calleeTemplate()->nargs()));
+diff --git a/js/src/vm/FrameIter-inl.h b/js/src/vm/FrameIter-inl.h
+index d576775c3790b..d5c85c416bbf3 100644
+--- a/js/src/vm/FrameIter-inl.h
++++ b/js/src/vm/FrameIter-inl.h
+@@ -30,8 +30,7 @@ inline void FrameIter::unaliasedForEachActual(JSContext* cx, Op op) {
+       if (jsJitFrame().isIonJS()) {
+         jit::MaybeReadFallback recover(cx, activation()->asJit(),
+                                        &jsJitFrame());
+-        ionInlineFrames_.unaliasedForEachActual(cx, op, jit::ReadFrame_Actuals,
+-                                                recover);
++        ionInlineFrames_.unaliasedForEachActual(cx, op, recover);
+       } else if (jsJitFrame().isBailoutJS()) {
+         // :TODO: (Bug 1070962) If we are introspecting the frame which is
+         // being bailed, then we might be in the middle of recovering
+@@ -40,11 +39,10 @@ inline void FrameIter::unaliasedForEachActual(JSContext* cx, Op op) {
+         // that, we just return Undefined values for instruction results
+         // which are not yet recovered.
+         jit::MaybeReadFallback fallback;
+-        ionInlineFrames_.unaliasedForEachActual(cx, op, jit::ReadFrame_Actuals,
+-                                                fallback);
++        ionInlineFrames_.unaliasedForEachActual(cx, op, fallback);
+       } else {
+         MOZ_ASSERT(jsJitFrame().isBaselineJS());
+-        jsJitFrame().unaliasedForEachActual(op, jit::ReadFrame_Actuals);
++        jsJitFrame().unaliasedForEachActual(op);
+       }
+       return;
+   }
+From 7d0e94636caa2d02aac935b79e959ff38ee39121 Mon Sep 17 00:00:00 2001
+From: Jan de Mooij <jdemooij@mozilla.com>
+Date: Wed, 12 Apr 2023 04:51:21 +0000
+Subject: [PATCH] Bug 1827073 part 3 - Fix reading of actual arguments. r=iain
+
+Depends on D175113
+
+Differential Revision: https://phabricator.services.mozilla.com/D175114
+---
+ js/src/jit/JSJitFrameIter.h        | 33 ++++++++++++++++++++++--------
+ js/src/jit/RematerializedFrame.cpp |  6 +++---
+ 2 files changed, 27 insertions(+), 12 deletions(-)
+
+diff --git a/js/src/jit/JSJitFrameIter.h b/js/src/jit/JSJitFrameIter.h
+index 3893dda4471cd..b056da46db9fa 100644
+--- a/js/src/jit/JSJitFrameIter.h
++++ b/js/src/jit/JSJitFrameIter.h
+@@ -75,9 +75,13 @@ enum class FrameType {
+   JSJitToWasm,
+ };
+ 
+-enum ReadFrameArgsBehavior {
+-  // Read all args (i.e. [0 ... numActuals()])
+-  ReadFrame_Actuals
++enum class ReadFrameArgsBehavior {
++  // Read all actual arguments. Will invoke the callback numActualArgs times.
++  Actuals,
++
++  // Read all argument values in the stack frame. Will invoke the callback
++  // max(numFormalArgs, numActualArgs) times.
++  ActualsAndFormals,
+ };
+ 
+ class CommonFrameLayout;
+@@ -661,11 +665,22 @@ class InlineFrameIterator {
+       unsigned nactual = numActualArgs();
+       unsigned nformal = calleeTemplate()->nargs();
+ 
+-      // Get the non overflown arguments, which are taken from the inlined
+-      // frame, because it will have the updated value when JSOp::SetArg is
+-      // done.
+-      s.readFunctionFrameArgs(argOp, argsObj, thisv, 0, nformal, script(),
+-                              fallback);
++      // Read the formal arguments, which are taken from the inlined frame,
++      // because it will have the updated value when JSOp::SetArg is used.
++      unsigned numFormalsToRead;
++      if (behavior == ReadFrameArgsBehavior::Actuals) {
++        numFormalsToRead = std::min(nactual, nformal);
++      } else {
++        MOZ_ASSERT(behavior == ReadFrameArgsBehavior::ActualsAndFormals);
++        numFormalsToRead = nformal;
++      }
++      s.readFunctionFrameArgs(argOp, argsObj, thisv, 0, numFormalsToRead,
++                              script(), fallback);
++
++      // Skip formals we didn't read.
++      for (unsigned i = numFormalsToRead; i < nformal; i++) {
++        s.skip();
++      }
+ 
+       if (nactual > nformal) {
+         if (more()) {
+@@ -722,7 +737,7 @@ class InlineFrameIterator {
+                               MaybeReadFallback& fallback) const {
+     Nop nop;
+     readFrameArgsAndLocals(cx, op, nop, nullptr, nullptr, nullptr, nullptr,
+-                           nullptr, ReadFrame_Actuals, fallback);
++                           nullptr, ReadFrameArgsBehavior::Actuals, fallback);
+   }
+ 
+   JSScript* script() const { return script_; }
+diff --git a/js/src/jit/RematerializedFrame.cpp b/js/src/jit/RematerializedFrame.cpp
+index 098eb36356d6c..c9544057f7dfb 100644
+--- a/js/src/jit/RematerializedFrame.cpp
++++ b/js/src/jit/RematerializedFrame.cpp
+@@ -51,9 +51,9 @@ RematerializedFrame::RematerializedFrame(JSContext* cx, uint8_t* top,
+   }
+ 
+   CopyValueToRematerializedFrame op(slots_);
+-  iter.readFrameArgsAndLocals(cx, op, op, &envChain_, &hasInitialEnv_,
+-                              &returnValue_, &argsObj_, &thisArgument_,
+-                              ReadFrame_Actuals, fallback);
++  iter.readFrameArgsAndLocals(
++      cx, op, op, &envChain_, &hasInitialEnv_, &returnValue_, &argsObj_,
++      &thisArgument_, ReadFrameArgsBehavior::ActualsAndFormals, fallback);
+ }
+ 
+ /* static */
+From b71d94fb35c0f54be3d0a855204d68e0c6ef7684 Mon Sep 17 00:00:00 2001
+From: Jan de Mooij <jdemooij@mozilla.com>
+Date: Mon, 24 Apr 2023 12:17:07 +0000
+Subject: [PATCH] Bug 1827073 part 4 - Add test and release assertion. r=iain
+
+Depends on D175114
+
+Differential Revision: https://phabricator.services.mozilla.com/D175115
+---
+ js/src/jit-test/tests/arguments/bug1827073.js | 13 +++++++++++++
+ js/src/vm/ArgumentsObject.cpp                 |  1 +
+ 2 files changed, 14 insertions(+)
+ create mode 100644 js/src/jit-test/tests/arguments/bug1827073.js
+
+diff --git a/js/src/jit-test/tests/arguments/bug1827073.js b/js/src/jit-test/tests/arguments/bug1827073.js
+new file mode 100644
+index 0000000000000..aecbc6f4a67be
+--- /dev/null
++++ b/js/src/jit-test/tests/arguments/bug1827073.js
+@@ -0,0 +1,13 @@
++// |jit-test| --fast-warmup
++let depth = 0;
++function f1(a2, a3, a4, a5) {
++    f2();
++}
++function f2() {
++    if (depth++ > 100) {
++        return;
++    }
++    f1(1, 2);
++    assertEq(JSON.stringify(Array.from(f1.arguments)), "[1,2]");
++}
++f1(1, 2);
+diff --git a/js/src/vm/ArgumentsObject.cpp b/js/src/vm/ArgumentsObject.cpp
+index 0ca915d3766c5..a35519c18eb5d 100644
+--- a/js/src/vm/ArgumentsObject.cpp
++++ b/js/src/vm/ArgumentsObject.cpp
+@@ -177,6 +177,7 @@ struct CopyScriptFrameIterArgs {
+     // Append actual arguments.
+     iter_.unaliasedForEachActual(
+         cx, [this](const Value& v) { actualArgs_.infallibleAppend(v); });
++    MOZ_RELEASE_ASSERT(actualArgs_.length() == numActuals);
+     return true;
+   }
+ 

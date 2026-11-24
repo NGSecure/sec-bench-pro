@@ -1,0 +1,15 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "0ba3af42be7fcfb0773fbf057c5b67277d3aa399"
+  ],
+  "target_files": [
+    "js/src/jit/JitFrames.cpp",
+    "js/src/jit/Snapshots.cpp",
+    "js/src/jit/Snapshots.h",
+    "js/src/jit/shared/CodeGenerator-shared.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "e2acef6711967949cd0825869034165383c482e1"
+  ],
+  "target_files": [
+    "js/src/wasm/WasmInstance.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "907e0ce2a1ae",
+    "ac781d872218",
+    "c217581ee0f2",
+    "4c95847d3b31",
+    "9a76402a4a10",
+    "1ab696252ab8"
+  ],
+  "target_files": [
+    "js/src/vm/AsyncIteration.cpp",
+    "js/src/vm/AsyncIteration.h",
+    "js/src/vm/List-inl.h"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

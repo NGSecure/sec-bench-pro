@@ -1,0 +1,13 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "d5df70357db3d244669ed3147467e5b7ade0f51c"
+  ],
+  "target_files": [
+    "js/src/jit/JSJitFrameIter.cpp",
+    "js/src/jit/JSJitFrameIter.h"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

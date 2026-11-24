@@ -1,0 +1,12 @@
+{
+  "work_dir": "/src/gecko-dev",
+  "fix_commits": [
+    "23cf0b3985c329aae2898bae518a7f5813c132ae"
+  ],
+  "target_files": [
+    "js/src/builtin/AtomicsObject.cpp"
+  ],
+  "shared_libraries": [
+    "js/src/jit-test/lib/*.js"
+  ]
+}

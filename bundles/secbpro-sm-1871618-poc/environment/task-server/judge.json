@@ -1,0 +1,16 @@
+{
+  "engine": "sm",
+  "instance_id": "1871618",
+  "work_dir": "/src/gecko-dev",
+  "binary": "/out/js",
+  "options": "--fast-warmup --ion-gvn=off --gc-zeal=10,233 --blinterp-warmup-threshold=1 --baseline-warmup-threshold=0 --ion-licm=off --ion-warmup-threshold=100 --fuzzing-safe --ion-optimize-shapeguards=off --no-incremental-gc --disable-parser-deferred-alloc --differential-testing --ion-edgecase-analysis=off",
+  "error_type": "ASAN_CRASH",
+  "timeout_sec": 300,
+  "attempts": 3,
+  "max_poc_bytes": 131072,
+  "native_allowlist": null,
+  "asan_options": "abort_on_error=1:detect_leaks=0:symbolize=0:color=never",
+  "fixed_timeout_ok": false,
+  "fixed_oom_ok": false,
+  "disable_aslr": false
+}
