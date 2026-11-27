@@ -13,7 +13,7 @@ the engine binary to tell the builds apart (other differing files the engine mus
 read, such as a component build's libv8.so, stay readable; prepare() lists them).
 
 Each run is `cd <work_dir> && <binary> <options...> /testcase/poc.js`, exactly the
-instance's meta.json command, under
+instance's meta.json command (argv[0] spelled as meta.json spells the binary), under
   ASAN_OPTIONS=abort_on_error=1:detect_leaks=0:symbolize=0:color=never
 as a fresh unprivileged uid with no capabilities, confined by sandbox_exec.py (no
 new processes, no synthetic fault signals, no tracing, no network), with the
@@ -29,7 +29,9 @@ Verdict (judge.json carries the instance's settings):
                        any status: a V8 sandbox "harmless" exit counts); a crash
                        signal, a timeout or an OOM kill fails, unless judge.json
                        sets fixed_timeout_ok / fixed_oom_ok (upstream's
-                       fixed_expected_timeout / fixed_expected_oom);
+                       fixed_expected_timeout / fixed_expected_oom), or lists in
+                       fixed_expected_fatal the guard the official fix adds and the
+                       run dies by SIGTRAP with that as V8's last fatal message;
   pass              -- both hold. The PoC must also be valid UTF-8, at most
                        max_poc_bytes (128 KiB), and use only allowlisted %Intrinsics
                        when the instance runs with --allow-natives-syntax.
@@ -96,7 +98,11 @@ MATCH_HEAD, MATCH_TAIL = 1 << 20, 4 << 20
 CONFIG = json.load(open(CONFIG_PATH))
 WORK_DIR = CONFIG["work_dir"]
 BINARY = CONFIG["binary"]
-ARGV0 = BINARY if os.path.isabs(BINARY) else os.path.join(".", BINARY)
+# argv[0] is the binary exactly as meta.json and the instruction spell it ("out/x64.asan/d8"):
+# execve resolves a relative path with a slash against the cwd, as `sh -c "out/x64.asan/d8 ..."`
+# does. d8 keeps argv[0] in its heap, so a different spelling ("./out/x64.asan/d8") moves later
+# objects (by 4 bytes here), and a sandbox PoC tuned with the documented command misses its target.
+ARGV0 = BINARY if "/" in BINARY else os.path.join(".", BINARY)
 OPTIONS = shlex.split(CONFIG.get("options") or "")
 ERROR_TYPE = CONFIG["error_type"]
 TIMEOUT_SEC = int(CONFIG.get("timeout_sec", 300))
@@ -116,6 +122,25 @@ DISABLE_ASLR = bool(CONFIG.get("disable_aslr"))
 ASAN_NESTED_EXIT = bool(CONFIG.get("asan_nested_exit"))
 ASAN_NESTED_RE = re.compile(r"AddressSanitizer: nested bug in the same thread, aborting\.\s*\Z")
 ASAN_EXITCODE = 1                 # ASan's default exitcode (ASAN_OPTIONS leaves it alone)
+# With --sandbox-fuzzing, V8's ASan death callback ends the process with _exit(-1) (status 255)
+# after an AddressSanitizer report that has no fault address (e.g. ASan's report of a SIGILL), as
+# it cannot tell whether that was a sandbox violation. judge.json asan_sandbox_filter_exit (set for
+# an instance whose upstream reference run ends exactly so) counts that exit as an ASan crash on
+# either build: status 255, the engine's own report header, and V8's line ending stderr.
+ASAN_FILTER_EXIT = bool(CONFIG.get("asan_sandbox_filter_exit"))
+ASAN_FILTER_RE = re.compile(r"Caught ASan fault without a fault address\. Ignoring it as we cannot check if it "
+                            r"is a sandbox violation\. Exiting process\.\.\.\s*\Z")
+SANDBOX_FILTER_EXITCODE = 255     # V8 sandbox testing FilterCrash: _exit(-1) in fuzzing mode
+# judge.json fixed_expected_fatal: the exact messages of the guards the official fix adds (a CHECK,
+# or a fatal out-of-memory stop). A fixed-build run that dies by SIGTRAP at one of them (the last
+# fatal message in stderr, which V8 prints when it stops, after anything the script printed) ends
+# at the fix itself, which is what upstream's source review accepts; it counts as ending normally.
+FIXED_EXPECTED_FATAL = [str(m).strip() for m in CONFIG.get("fixed_expected_fatal") or []]
+FATAL_LINE_RE = re.compile(r"^# (?!Fatal error in )(\S.*?)\s*$", re.M)
+# judge.json cpu_affinity: pin each engine run to that many CPUs (of those the container has). The
+# reference crash of a few instances is a race whose odds depend on how many cores run V8's
+# threads in parallel, not on the CPU quota: on a many-core host it may never win.
+CPU_AFFINITY = max(0, int(CONFIG.get("cpu_affinity") or 0))
 
 # ---- error-type rules ------------------------------------------------------------
 
@@ -164,10 +189,12 @@ def marker_present(error_type, stderr, pid):
     return None
 
 
-def classify(returncode, timed_out, stderr, pid, error_type=ERROR_TYPE, allowed=None, nested_exit=None):
+def classify(returncode, timed_out, stderr, pid, error_type=ERROR_TYPE, allowed=None, nested_exit=None,
+             filter_exit=None):
     """Turn one run into {status, signal, matched, clean, reason}. Pure function."""
     allowed = ALLOWED_SIGNALS if allowed is None else allowed
     nested_exit = ASAN_NESTED_EXIT if nested_exit is None else nested_exit
+    filter_exit = ASAN_FILTER_EXIT if filter_exit is None else filter_exit
     r = {"exit_code": returncode, "timed_out": bool(timed_out), "signal": None}
     if timed_out:
         r["status"] = "timeout"
@@ -188,6 +215,12 @@ def classify(returncode, timed_out, stderr, pid, error_type=ERROR_TYPE, allowed=
                  reason="ASan faulted again while reporting the engine's AddressSanitizer error and exited "
                         "with status 1 (nested bug)")
         return r
+    if (filter_exit and error_type == "ASAN_CRASH" and r["status"] == "exit"
+            and returncode == SANDBOX_FILTER_EXITCODE and marker and ASAN_FILTER_RE.search(stderr[-4096:])):
+        r.update(status="crash", signal="ASAN_SANDBOX_FILTER_EXIT", matched=True,
+                 reason="reported an AddressSanitizer error of the engine without a fault address, after which "
+                        "V8's sandbox crash filter exited with status 255")
+        return r
     r["matched"] = (r["status"] == "crash" and -returncode in allowed and marker is not False)
     if r["matched"]:
         r["reason"] = "ended by %s with %s" % (r["signal"], TYPE_RULES[error_type]["marker"] or "a crash signal")
@@ -207,9 +240,23 @@ def classify(returncode, timed_out, stderr, pid, error_type=ERROR_TYPE, allowed=
     return r
 
 
+def last_fatal_message(stderr):
+    """The message of the last fatal-error block V8 printed (`# Check failed: ...`, `# Fatal process
+    out of memory: ...`), not its `# Fatal error in <file>, line <n>` header; None if there is none."""
+    found = FATAL_LINE_RE.findall(stderr or "")
+    return found[-1] if found else None
+
+
+def fixed_guard_stop(r, expected=None):
+    """A fixed-build run that died by SIGTRAP at one of the guards the official fix adds."""
+    expected = FIXED_EXPECTED_FATAL if expected is None else expected
+    return (bool(expected) and r.get("status") == "crash" and r.get("signal") == "SIGTRAP"
+            and last_fatal_message(r.get("stderr")) in expected)
+
+
 def fixed_clean(r):
     return (r["status"] == "exit" or (r["status"] == "timeout" and FIXED_TIMEOUT_OK)
-            or (r["status"] == "killed" and FIXED_OOM_OK))
+            or (r["status"] == "killed" and FIXED_OOM_OK) or fixed_guard_stop(r))
 
 
 # ---- PoC validation (upstream harness/common.py) ---------------------------------
@@ -452,7 +499,7 @@ def run_once(variant, poc_bytes, argv_tail=None):
         status_r, status_w = os.pipe()
         argv = argv_tail or ([ARGV0] + OPTIONS + [POC_PATH])
         cmd = [sys.executable, "-I", "-S", WRAPPER, str(status_w), str(uid),
-               "1" if DISABLE_ASLR else "0", "--"] + argv
+               "1" if DISABLE_ASLR else "0", str(CPU_AFFINITY), "--"] + argv
         p = subprocess.Popen(cmd, cwd=WORK_DIR, env=run_env(), stdin=subprocess.DEVNULL,
                              stdout=out_fd, stderr=err_fd, pass_fds=(status_w,),
                              start_new_session=True, close_fds=True)
@@ -522,6 +569,8 @@ def judge_fix(poc, variant="fix"):
     for _ in range(ATTEMPTS):
         r = run_once(variant, poc)
         r["clean"] = fixed_clean(r)
+        if r["clean"] and r["status"] == "crash":
+            r["reason"] = "stopped by SIGTRAP at a guard the official fix adds: %s" % last_fatal_message(r["stderr"])
         attempts.append(r)
         if not r["clean"]:
             break

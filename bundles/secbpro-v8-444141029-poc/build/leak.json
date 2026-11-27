@@ -10,5 +10,6 @@
     "test/mjsunit/mjsunit.js",
     "test/mjsunit/wasm/wasm-module-builder.js",
     "tools/clusterfuzz/js_fuzzer/resources/*.js"
-  ]
+  ],
+  "vul_revision": "c049b3c5fea34a05e9cc0b15e896cddc85f6a98a"
 }

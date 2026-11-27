@@ -12,5 +12,6 @@
   "asan_options": "abort_on_error=1:detect_leaks=0:symbolize=0:color=never",
   "fixed_timeout_ok": false,
   "fixed_oom_ok": false,
-  "disable_aslr": false
+  "disable_aslr": false,
+  "cpu_affinity": 4
 }

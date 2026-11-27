@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Drop privileges, confine, then exec the JS engine (one PoC run).
 
-    python3 -I -S sandbox_exec.py <status_fd> <uid> <disable_aslr 0|1> -- <argv...>
+    python3 -I -S sandbox_exec.py <status_fd> <uid> <disable_aslr 0|1> [<cpus>] -- <argv...>
 
 task_server.py starts this wrapper as a fresh single-threaded process (no
 preexec_fn in the multi-threaded server), so everything below runs before the
@@ -10,7 +10,10 @@ is the PID ASan prints in its report header.
 
 1. oom_score_adj = 1000, so a memory blow-up kills the engine, not the server;
 2. optional personality(ADDR_NO_RANDOMIZE) for the one upstream instance that
-   was recorded with ASLR off (meta.json disable_aslr);
+   was recorded with ASLR off (meta.json disable_aslr); optional CPU affinity:
+   <cpus> > 0 pins the run to that many of the CPUs this process may use (chosen
+   at random per run), for the instances whose reference crash is a race that
+   depends on how many cores run the engine's threads (judge.json cpu_affinity);
 3. become <uid>:<uid> with no supplementary groups (a fresh uid per run),
    keeping only CAP_DAC_OVERRIDE, and only until execve. The engine binary is
    execute-only (mode 0711), so a PoC cannot read it (d8 readbuffer() and the
@@ -50,6 +53,7 @@ with no data exactly when execve succeeded.
 import ctypes
 import errno
 import os
+import random
 import resource
 import struct
 import sys
@@ -220,10 +224,20 @@ def install_seccomp(libc):
         raise OSError(ctypes.get_errno(), "PR_SET_SECCOMP")
 
 
-def confine(uid, disable_aslr):
+def pin_cpus(n):
+    """Restrict this process (and so the engine and every thread it starts) to n of the CPUs it may
+    use now; fewer available leaves it as it is. Returns the CPUs in use."""
+    allowed = sorted(os.sched_getaffinity(0))
+    if 0 < n < len(allowed):
+        os.sched_setaffinity(0, random.SystemRandom().sample(allowed, n))
+    return sorted(os.sched_getaffinity(0))
+
+
+def confine(uid, disable_aslr, cpus=0):
     libc = ctypes.CDLL(None, use_errno=True)
     with open("/proc/self/oom_score_adj", "w") as f:
         f.write("1000")
+    pin_cpus(cpus)
     if disable_aslr:
         # Docker's default seccomp profile may refuse this flag; the caller records it.
         if libc.personality(ctypes.c_ulong(0x0040000)) == -1:
@@ -244,13 +258,17 @@ def confine(uid, disable_aslr):
 
 def main():
     status_fd, uid, aslr = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3] == "1"
-    if sys.argv[4] != "--" or len(sys.argv) < 6:
+    rest = sys.argv[4:]
+    cpus = 0
+    if rest and rest[0] != "--" and rest[0].isdigit():
+        cpus, rest = int(rest[0]), rest[1:]
+    if not rest or rest[0] != "--" or len(rest) < 2:
         os.write(status_fd, b"usage error")
         os._exit(125)
-    argv = sys.argv[5:]
+    argv = rest[1:]
     os.set_inheritable(status_fd, False)          # closed by a successful execve
     try:
-        confine(uid, aslr)
+        confine(uid, aslr, cpus)
         os.execve(argv[0], argv, os.environ)
     except BaseException as exc:                  # never run the engine half-confined
         try:

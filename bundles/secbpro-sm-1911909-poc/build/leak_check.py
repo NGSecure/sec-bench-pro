@@ -36,7 +36,13 @@ Checks (FAIL = the image gives away the answer; NOTE = for a human to glance at)
                        git tracks nothing (SpiderMonkey images), every file under the
                        work dir counts as the revision's own.
   3. git history       no fix commit object resolves; the history has one commit;
-                       nested repositories are listed.
+                       nested repositories are listed. The tree is at the vulnerable
+                       revision the instance declares (leak.json vul_revision, V8 only):
+                       SEC-bench Pro's git sanitizer records the HEAD it found as
+                       `git config secb.originalHead`; a different one is a FAIL. Three
+                       upstream images with a prebuilt engine were pushed without their
+                       Dockerfile's checkout, so their tree is the base image's V8 checkout,
+                       newer than the fix, with the fix and its regression tests in it.
   4. artifacts         no upstream instance files (poc*.js such as poc_test1.js, Report.md,
                        VERIFIED.txt, output.txt, meta.json, *.patch) in /testcase,
                        /app/artifacts, /workspace, /tmp, /root, /src (top levels).
@@ -313,6 +319,28 @@ def tracked_predicate(work):
                              os.path.relpath(path, work)])[0] == 0
 
 
+def revision_check(work, declared):
+    """Check 3b: returns (fails, notes, report)."""
+    fails, notes, report = [], [], {}
+    if not declared:
+        return fails, notes, report
+    report["declared_vul_revision"] = declared
+    if not (have("git") and os.path.isdir(os.path.join(work, ".git"))):
+        notes.append("no git repository at %s: cannot tell which revision the tree is" % work)
+        return fails, notes, report
+    code, head = run(["git", "-C", work, "config", "--get", "secb.originalHead"])
+    head = head.strip() if code == 0 else ""
+    report["tree_original_head"] = head or None
+    if not head:
+        notes.append("the sanitized git records no secb.originalHead: cannot confirm the tree is at %s" % declared)
+    elif head != declared:
+        fails.append("the source tree is not at the vulnerable revision the instance declares: the sanitized git "
+                     "records secb.originalHead %s, the upstream Dockerfile checks out %s. The image was built "
+                     "without that checkout, so the source does not match the engine (the base image's checkout "
+                     "is typically newer than the fix and holds the fix and its regression tests)" % (head, declared))
+    return fails, notes, report
+
+
 def main():
     cfg = json.load(open(os.path.join(CHECK, "leak.json")))
     work = cfg["work_dir"]
@@ -359,6 +387,10 @@ def main():
             notes.append("%d nested .git dirs under %s (dependency checkouts?)" % (len(nested), work))
     else:
         notes.append("no git repository at %s" % work)
+    f, n, r = revision_check(work, cfg.get("vul_revision"))
+    fails += f
+    notes += n
+    report.update(r)
 
     # 4. upstream instance artifacts ----------------------------------------------------
     names = re.compile(r"^(poc[\w.-]*\.js|Report\.md|VERIFIED\.txt|output\.txt|meta\.json|.*\.patch)$")

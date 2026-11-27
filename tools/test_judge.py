@@ -906,11 +906,196 @@ def test_verifier_reward_files():
     shutil.rmtree(out)
 
 
+def test_argv0():
+    """argv[0] is the binary as meta.json and the instruction spell it; execve resolves a relative
+    path with a slash against the cwd (the judge's cwd is the work dir)."""
+    check("argv0 relative with slash kept", ts.ARGV0 == "out/x64.asan/d8", ts.ARGV0)
+    d = tempfile.mkdtemp()
+    try:
+        os.makedirs(os.path.join(d, "out", "bin"))
+        exe = os.path.join(d, "out", "bin", "tool")
+        with open(exe, "w") as f:
+            f.write("#!/bin/sh\necho \"$0\"\n")
+        os.chmod(exe, 0o755)
+        pid = os.fork()
+        if pid == 0:
+            try:
+                os.chdir(d)
+                fd = os.open(os.path.join(d, "argv0.txt"), os.O_WRONLY | os.O_CREAT, 0o644)
+                os.dup2(fd, 1)
+                os.execve("out/bin/tool", ["out/bin/tool"], {"PATH": "/usr/bin:/bin"})
+            finally:
+                os._exit(127)
+        _, st = os.waitpid(pid, 0)
+        out = open(os.path.join(d, "argv0.txt")).read().strip()
+        check("execve of a relative argv[0] resolves against the cwd", st == 0 and out == "out/bin/tool", (st, out))
+    finally:
+        shutil.rmtree(d)
+
+
+def test_sandbox_filter_exit():
+    """V8 --sandbox-fuzzing: ASan report without a fault address, then FilterCrash _exit(-1) (255);
+    counted as an ASan crash only where judge.json sets asan_sandbox_filter_exit, on both builds."""
+    tail = ("AddressSanitizer can not provide additional info.\nSUMMARY: AddressSanitizer: ILL (out/x64.asan/d8+0x1)\n"
+            "==100==ABORTING\nCaught ASan fault without a fault address. Ignoring it as we cannot check if it "
+            "is a sandbox violation. Exiting process...\n")
+    err = "AddressSanitizer:DEADLYSIGNAL\n" + asan(100, "ILL on unknown address 0x55b5bee9d2a0 (pc 0x55b5bee9d2a0)") + tail
+    on = lambda rc, e, pid=100, t="ASAN_CRASH": ts.classify(rc, False, e, pid, error_type=t,
+                                                             allowed=ts.TYPE_RULES[t]["signals"], filter_exit=True)
+    r = on(255, err)
+    check("filter exit: counted where enabled", r["matched"] and r["status"] == "crash"
+          and r["signal"] == "ASAN_SANDBOX_FILTER_EXIT" and not ts.fixed_clean(r), r)
+    check("filter exit: not counted by default", not cls("ASAN_CRASH", 255, err)["matched"])
+    check("filter exit: status 1", not on(1, err)["matched"])
+    check("filter exit: status 0", not on(0, err)["matched"])
+    check("filter exit: other pid's header", not on(255, err, pid=99)["matched"])
+    check("filter exit: needs the report header", not on(255, tail)["matched"])
+    check("filter exit: must end stderr", not on(255, err + "more\n")["matched"])
+    check("filter exit: not the in-sandbox variant", not on(255, err.replace(
+        "Caught ASan fault without a fault address. Ignoring it as we cannot check if it is a sandbox violation.",
+        "Caught harmless ASan fault (inside sandbox address space)."))["matched"])
+    check("filter exit: not for other error types", not on(255, err, t="RUNTIME_CRASH")["matched"])
+    check("filter exit: resource report does not count",
+          not on(255, asan(100, "out of memory: allocator is trying to allocate 0x1 bytes") + tail)["matched"])
+
+
+def test_fixed_guard():
+    """judge.json fixed_expected_fatal: a fixed-build run that dies by SIGTRAP with the fix's own guard
+    as V8's last fatal message ends normally; anything else does not."""
+    chk = ("#\n# Fatal error in , line 0\n# Check failed: input_count <= kMaxInputs.\n#\n#\n#\n"
+           "#FailureMessage Object: 0x7b764a14d860\n==== C stack trace ===============================\n\n"
+           "    out/x64.asan/d8(+0x18dedbb) [0x55ad6a161dbb]\n[end of stack trace]\n")
+    oom = ("\n<--- Last few GCs --->\n\n<--- JS stacktrace --->\n\n#\n# Fatal process out of memory: too many "
+           "canonicalized types\n#\n==== C stack trace ===============================\n")
+    check("last fatal: check", ts.last_fatal_message(chk) == "Check failed: input_count <= kMaxInputs.",
+          ts.last_fatal_message(chk))
+    check("last fatal: oom", ts.last_fatal_message(oom) == "Fatal process out of memory: too many canonicalized types")
+    check("last fatal: header only is none", ts.last_fatal_message("# Fatal error in x.cc, line 3\n") is None)
+    check("last fatal: none", ts.last_fatal_message("plain output\n") is None)
+    exp = ["Check failed: input_count <= kMaxInputs.", "Fatal process out of memory: too many canonicalized types"]
+    run = lambda sig, err, st="crash": {"status": st, "signal": sig, "stderr": err}
+    g = lambda r: ts.fixed_guard_stop(r, exp)
+    check("guard: SIGTRAP at the fix's CHECK", g(run("SIGTRAP", chk)))
+    check("guard: SIGTRAP at the fix's OOM stop", g(run("SIGTRAP", oom)))
+    check("guard: other CHECK", not g(run("SIGTRAP", chk.replace("input_count <= kMaxInputs", "x != y"))))
+    check("guard: forged text then a real other fatal", not g(run("SIGTRAP", chk + chk.replace(
+        "input_count <= kMaxInputs", "IsCompatibleCode(new_code)"))))
+    check("guard: SIGSEGV", not g(run("SIGSEGV", chk)))
+    check("guard: SIGABRT", not g(run("SIGABRT", chk)))
+    check("guard: exit status is not a guard stop", not g(run(None, chk, "exit")))
+    check("guard: nothing expected", not ts.fixed_guard_stop(run("SIGTRAP", chk), []))
+    saved = ts.FIXED_EXPECTED_FATAL
+    try:
+        ts.FIXED_EXPECTED_FATAL = exp
+        check("guard: fixed_clean", ts.fixed_clean(run("SIGTRAP", chk)))
+        check("guard: fixed_clean still rejects other crashes", not ts.fixed_clean(run("SIGTRAP", "boom\n")))
+        ts.FIXED_EXPECTED_FATAL = []
+        check("guard: off by default", not ts.fixed_clean(run("SIGTRAP", chk)))
+    finally:
+        ts.FIXED_EXPECTED_FATAL = saved
+
+
+def test_cpu_affinity():
+    """sandbox_exec.py pins a run to <cpus> CPUs (chosen among those it may use); 0 leaves it alone;
+    the argument is optional (the old 4-argument form still runs)."""
+    if not hasattr(os, "sched_getaffinity"):
+        print("skip  cpu affinity tests (no sched_getaffinity)")
+        return
+    allowed = sorted(os.sched_getaffinity(0))
+
+    def child(n):
+        r, w = os.pipe()
+        pid = os.fork()
+        if pid == 0:
+            os.close(r)
+            try:
+                got = sx.pin_cpus(n)
+                os.write(w, json.dumps(got).encode())
+            finally:
+                os._exit(0)
+        os.close(w)
+        data = os.read(r, 65536)
+        os.close(r)
+        os.waitpid(pid, 0)
+        return json.loads(data)
+    if len(allowed) >= 2:
+        one = child(1)
+        check("pin 1 cpu", len(one) == 1 and one[0] in allowed, one)
+    check("pin 0 leaves affinity", child(0) == allowed)
+    check("pin more than available leaves affinity", child(len(allowed) + 3) == allowed)
+    if os.geteuid() != 0:
+        print("skip  wrapper argument tests (need root for setuid)")
+        return
+    script = "import os,sys; sys.stdout.write(str(len(os.sched_getaffinity(0))))"
+    for args, want in (([str(0), "--"], len(allowed)), (["--"], len(allowed)), ([str(1), "--"], 1)):
+        r, w = os.pipe()
+        cmd = [sys.executable, "-I", "-S", sx.__file__, str(w), "61999", "0"] + args + [sys.executable, "-I", "-S", "-c", script]
+        p = __import__("subprocess").run(cmd, pass_fds=(w,), stdout=__import__("subprocess").PIPE,
+                                         stderr=__import__("subprocess").PIPE, cwd="/")
+        os.close(w)
+        err = os.read(r, 4096)
+        os.close(r)
+        out = p.stdout.decode().strip()
+        check("wrapper %s -> %d cpus" % (" ".join(args), want), out == str(min(want, len(allowed))) and not err,
+              (out, err, p.stderr[-300:]))
+
+
+def test_leak_check_revision():
+    """build/leak_check.py check 3b: the tree's recorded original HEAD must be the declared revision."""
+    sys.path.insert(0, os.path.join(HERE, os.pardir, "templates", "build"))
+    import leak_check as lc
+    if not shutil.which("git"):
+        print("skip  leak check revision tests (no git)")
+        return
+    d = tempfile.mkdtemp()
+    try:
+        __import__("subprocess").run(["git", "-C", d, "init", "-q"], check=True)
+        rev = "4715559d4fe2ce6e2c0f6de3c966347b6da6a489"
+        f, n, r = lc.revision_check(d, rev)
+        check("revision: unrecorded head is a note", not f and n and r["tree_original_head"] is None, (f, n, r))
+        __import__("subprocess").run(["git", "-C", d, "config", "secb.originalHead", rev], check=True)
+        f, n, r = lc.revision_check(d, rev)
+        check("revision: declared head passes", not f and not n and r["tree_original_head"] == rev, (f, n, r))
+        __import__("subprocess").run(["git", "-C", d, "config", "secb.originalHead",
+                                      "dbb6746443d3db53c5067d4a846a1dd192844558"], check=True)
+        f, n, r = lc.revision_check(d, rev)
+        check("revision: other head fails", len(f) == 1 and "secb.originalHead dbb67464" in f[0], (f, n))
+        check("revision: nothing declared", lc.revision_check(d, None) == ([], [], {}))
+    finally:
+        shutil.rmtree(d)
+
+
+def test_generator_settings():
+    """make_bundle.py: image ASAN_OPTIONS are kept ahead of ours; one declared V8 revision; the
+    per-instance tables only name instances of the right error type."""
+    sys.path.insert(0, HERE)
+    import make_bundle as mb
+    d = tempfile.mkdtemp()
+    try:
+        from pathlib import Path
+        idir = Path(d)
+        (idir / "Dockerfile").write_text('FROM x\nENV ASAN_OPTIONS="handle_sigill=2"\nRUN git fetch --depth=1 '
+                                         'origin cd6944c05d268ef7d734cf33af86bc94c6172c2f && \\\n    git checkout '
+                                         '--detach FETCH_HEAD\n')
+        check("image asan options", mb.image_asan_options(idir) == "handle_sigill=2", mb.image_asan_options(idir))
+        check("vul revision v8", mb.vul_revision("v8", idir) == "cd6944c05d268ef7d734cf33af86bc94c6172c2f")
+        check("vul revision sm", mb.vul_revision("sm", idir) is None)
+        (idir / "Dockerfile").write_text("FROM x\nRUN git checkout d942bcd55a236074e4fd0601a103e8c252e56899~1\n")
+        check("no image asan options", mb.image_asan_options(idir) == "")
+    finally:
+        shutil.rmtree(d)
+    check("guard table texts end like V8 messages", all(
+        m.startswith(("Check failed: ", "Fatal process out of memory: ")) for v in mb.FIXED_EXPECTED_FATAL.values() for m in v))
+    check("cpu table positive", all(isinstance(n, int) and n > 0 for n in mb.CPU_AFFINITY.values()))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--upstream", help="SEC-bench Pro checkout (compares the comment stripper)")
     a = ap.parse_args()
-    for t in (test_classify, test_fixed_clean, test_verify, test_reference_verdicts, test_validate,
+    for t in (test_classify, test_fixed_clean, test_argv0, test_sandbox_filter_exit, test_fixed_guard,
+              test_cpu_affinity, test_leak_check_revision, test_generator_settings,
+              test_verify, test_reference_verdicts, test_validate,
               lambda: test_strip(a.upstream), test_seccomp, test_seccomp_i386, test_leak_check_libraries,
               test_leak_check_source_tree, test_leak_check_fix_patch, test_runtime_plan,
               test_build_sh_controls, test_probe_interpreter_modes, test_verifier_reward_files):
