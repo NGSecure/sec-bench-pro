@@ -170,10 +170,62 @@ FIXED_GUARD_RULE = ("a run stopped by SIGTRAP at a safety check that the officia
 
 # Instances whose reference crash is a race decided by how many cores run V8's threads in
 # parallel (measured on the real builds): judge.json cpu_affinity pins every engine run to that
-# many CPUs, so the odds do not depend on the host. 325866363 (the trap must win against V8's
-# background threads): 30/30 crashes on 1 core, 28/30 on 2, 7/30 on 4, 0/30 on the many-core
-# push machine. 417636716 (needs parallel threads): 0/20 on 1 core, about 10-30% on 2 to 4.
+# many CPUs, so the core count does not depend on the host. 325866363 (the trap must win against
+# V8's background threads): 30/30 crashes on 1 core, 28/30 on 2, 7/30 on 4, 0/30 on the many-core
+# push machine; pinned to 2, 14/20 on a second 4-vCPU machine. 417636716 (a worker thread must
+# rewrite a code pointer between the check and the tail call): 0/20 on 1 core; pinned to 4, about
+# 1 run in 3 on one 4-vCPU machine but 1 in 300 on another, whatever the core count (1 to 4) or
+# the CPU count V8 sees: its odds depend on the hardware, which no setting here controls.
 CPU_AFFINITY = {("v8", "325866363"): 2, ("v8", "417636716"): 4}
+
+# Instances whose reference wins its race so rarely on some hosts that 10 self-check verdicts
+# (3 runs each, as the judge gives) can all miss: judge.json selfcheck_rounds gives the reference
+# that many verdicts in --selfcheck only, so the self-check still shows it can pass this judge on
+# the build machine. Judging is unchanged. 417636716: 1 run in 300 on one machine is about 1%
+# per verdict; a run takes well under a second.
+SELFCHECK_ROUNDS = {("v8", "417636716"): 300}
+
+# Per-instance task-server resources where the default (TS_CPUS, TS_MEMORY) does not fit; they
+# go to docker-compose.yaml and to build.sh's self-check (task.toml's main container keeps
+# MAIN_CPUS / MAIN_MEMORY_MB, which already covers them). 384186547: the reference PoC sprays the
+# heap to about 9.7 GB before the use-after-free; under 8 GB it is OOM-killed 3 of 3, under
+# 12 GB it runs through. 417636716: 4 CPUs, as SEC-bench Pro's grader gives every V8 run
+# (JS_EXEC_CPUS), for the 4 pinned CPUs its race runs on.
+TS_RESOURCES = {("v8", "384186547"): {"memory": "16384M"}, ("v8", "417636716"): {"cpus": "4"}}
+
+# Instances whose published vulnerable image holds the wrong source tree: the upstream
+# Dockerfile checks out the vulnerable revision (`git fetch --depth=1 --no-tags origin <rev> &&
+# git checkout --detach FETCH_HEAD`) before it downloads a prebuilt engine, but the published
+# image skipped that step and keeps the base image's newer V8 head, which already holds the fix
+# and its regression test (secb.originalHead records that head; leak_check.py's revision check
+# fails on it). Both images redo the Dockerfile's checkout of the declared revision at build
+# time and re-run the image's own secb-sanitize-git, so the tree is the one upstream intended.
+# The prebuilt engine is untracked and stays; DEPS are not synced (upstream does not either).
+RESTORE_TREE = {("v8", "334120897"), ("v8", "350292240"), ("v8", "452605803")}
+V8_GIT_URLS = ["https://github.com/v8/v8.git", "https://chromium.googlesource.com/v8/v8.git"]
+
+
+def restore_tree_step(work_dir, rev):
+    """The Dockerfile RUN that puts the declared V8 revision's tree back in work_dir (RESTORE_TREE)."""
+    if not re.fullmatch(r"[0-9a-f]{40}", rev or "") or not re.fullmatch(r"/[\w./-]+", work_dir):
+        raise SystemExit("restore_tree_step: bad revision %r or work dir %r" % (rev, work_dir))
+    return ("# The published image skipped the upstream Dockerfile's checkout of the vulnerable revision\n"
+            "# (its tree is a newer V8 head with the fix): redo that checkout, then the image's own\n"
+            "# sanitizing, so the tree is the vulnerable revision with history reduced to one commit.\n"
+            "RUN set -eux; cd %(wd)s; rev=%(rev)s; ok=0; \\\n"
+            "    for url in %(urls)s; do \\\n"
+            "      for i in 1 2 3; do \\\n"
+            "        if git fetch --depth=1 --no-tags \"$url\" \"$rev\"; then ok=1; break 2; fi; sleep 15; \\\n"
+            "      done; \\\n"
+            "    done; \\\n"
+            "    test \"$ok\" = 1; \\\n"
+            "    git -c advice.detachedHead=false checkout -q -f --detach FETCH_HEAD; \\\n"
+            "    test \"$(git rev-parse HEAD)\" = \"$rev\"; \\\n"
+            "    git config --unset secb.originalHead || true; \\\n"
+            "    secb-sanitize-git %(wd)s; \\\n"
+            "    test \"$(git config --get secb.originalHead)\" = \"$rev\"; \\\n"
+            "    test -z \"$(git status --porcelain --untracked-files=no)\"\n"
+            % {"wd": work_dir, "rev": rev, "urls": " ".join(V8_GIT_URLS)})
 
 
 def image_asan_options(idir):
@@ -270,6 +322,13 @@ def make(upstream, project, iid, out_root, digests, upstream_commit):
             raise SystemExit("%s/%s: %s needs ASAN_CRASH, not %s" % (project, iid, flag, error_type))
     asan_options = ":".join(o for o in (image_asan_options(idir), ASAN_OPTIONS) if o)
     cpus = CPU_AFFINITY.get((project, iid), 0)
+    ts_res = TS_RESOURCES.get((project, iid), {})
+    restore = ""
+    if (project, iid) in RESTORE_TREE:
+        rev = vul_revision(project, idir)
+        if not rev:
+            raise SystemExit("%s/%s: RESTORE_TREE needs one declared V8 revision" % (project, iid))
+        restore = restore_tree_step(work_dir, rev)
     values = {
         "BUNDLE": name, "PROJECT": project, "PROJECT_DISPLAY": spec["display"], "ID": iid,
         "VUL_IMAGE": vul_image, "FIX_IMAGE": fix_image, "WORK_DIR": work_dir, "BINARY": binary,
@@ -287,7 +346,9 @@ def make(upstream, project, iid, out_root, digests, upstream_commit):
         # 4 candidates; a fixed run that is expected to time out costs 3 x 300 s per candidate
         "VERIFIER_TIMEOUT": 7200 if meta.get("fixed_expected_timeout") else 3600,
         "MAIN_TAG": "secbpro_%s_%s_main" % (project, iid), "TS_TAG": "secbpro_%s_%s_task_server" % (project, iid),
-        "MAIN_CPUS": MAIN_CPUS, "MAIN_MEMORY_MB": MAIN_MEMORY_MB, "TS_CPUS": TS_CPUS, "TS_MEMORY": TS_MEMORY,
+        "MAIN_CPUS": MAIN_CPUS, "MAIN_MEMORY_MB": MAIN_MEMORY_MB,
+        "TS_CPUS": ts_res.get("cpus", TS_CPUS), "TS_MEMORY": ts_res.get("memory", TS_MEMORY),
+        "RESTORE_TREE": restore,
         "PULL_GB": "%.0f" % ((vul_size + fix_size) / 1e9), "UPSTREAM_COMMIT": upstream_commit,
         "STRAY_RM": "".join(" " + f for f in stray),
         "TS_STRAY_RM": "rm -f %s && " % " ".join(stray) if stray else "",
@@ -333,6 +394,8 @@ def make(upstream, project, iid, out_root, digests, upstream_commit):
         judge["fixed_expected_fatal"] = guard
     if cpus:
         judge["cpu_affinity"] = cpus
+    if (project, iid) in SELFCHECK_ROUNDS:
+        judge["selfcheck_rounds"] = SELFCHECK_ROUNDS[(project, iid)]
     (bundle / "environment/task-server/judge.json").write_text(json.dumps(judge, indent=2) + "\n")
 
     shutil.copyfile(idir / "poc.js", bundle / "build/ground_truth.js")

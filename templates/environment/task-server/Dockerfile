@@ -19,7 +19,7 @@ RUN python3 /secb_collect.py copy @@WORK_DIR@@ @@BINARY@@ /secb_fix \
 
 FROM --platform=linux/amd64 ${VUL_IMAGE}
 WORKDIR /
-COPY --from=fix /secb_fix /secb/store/fix
+@@RESTORE_TREE@@COPY --from=fix /secb_fix /secb/store/fix
 COPY environment/task-server/task_server.py environment/task-server/sandbox_exec.py \
      environment/task-server/collect_runtime.py environment/task-server/judge.json /secb/
 COPY build/ground_truth.js /secb/ground_truth.js

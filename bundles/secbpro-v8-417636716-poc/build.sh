@@ -22,7 +22,7 @@ FIX_IMAGE="${FIX_IMAGE:-hwiwonlee/v8.x86_64.fixed:417636716@sha256:1997bf30ef243
 VER=v0.0.1
 MAIN_TAG="secbpro_v8_417636716_main:${VER}"
 TS_TAG="secbpro_v8_417636716_task_server:${VER}"
-TS_CPUS="${TS_CPUS:-2}"
+TS_CPUS="${TS_CPUS:-4}"
 TS_MEMORY="${TS_MEMORY:-8192M}"
 
 # Echo a local reference for the image: as given if present or pullable (3 tries, for

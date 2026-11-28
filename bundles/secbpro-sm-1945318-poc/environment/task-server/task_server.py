@@ -139,7 +139,8 @@ FIXED_EXPECTED_FATAL = [str(m).strip() for m in CONFIG.get("fixed_expected_fatal
 FATAL_LINE_RE = re.compile(r"^# (?!Fatal error in )(\S.*?)\s*$", re.M)
 # judge.json cpu_affinity: pin each engine run to that many CPUs (of those the container has). The
 # reference crash of a few instances is a race whose odds depend on how many cores run V8's
-# threads in parallel, not on the CPU quota: on a many-core host it may never win.
+# threads in parallel, not on the CPU quota: on a many-core host it may never win. Pinning fixes
+# the core count; the odds still vary with the host's hardware.
 CPU_AFFINITY = max(0, int(CONFIG.get("cpu_affinity") or 0))
 
 # ---- error-type rules ------------------------------------------------------------
@@ -1055,10 +1056,13 @@ def engine_probe():
 # Some targets are races; the judge, like SEC-bench Pro's grader, gives a PoC up to 3 runs per
 # build, and a flaky reference PoC can still miss all 3 in one verdict. So --selfcheck (never the
 # server, whose judging this does not touch) gives the reference up to REF_ROUNDS verdicts: it
-# must pass once, and with the vulnerable build in place of the fixed one it must fail once. A
-# verdict is retried only when the vulnerable build ran without reproducing; a fixed-build
-# failure, a timeout or an OOM kill is final (upstream does not retry those either).
-REF_ROUNDS = 10
+# must pass once, and with the vulnerable build in place of the fixed one it must fail once
+# (within SWAP_ROUNDS). A verdict is retried only when the vulnerable build ran without
+# reproducing; a fixed-build failure, a timeout or an OOM kill is final (upstream does not retry
+# those either). judge.json selfcheck_rounds raises REF_ROUNDS for a race that wins rarely on
+# some hosts: the self-check then still shows that the reference can pass this judge there.
+REF_ROUNDS = max(1, int(CONFIG.get("selfcheck_rounds") or 10))
+SWAP_ROUNDS = 10
 
 
 def _vul_missed(v):
@@ -1076,7 +1080,7 @@ def reference_verdicts(poc, rounds=REF_ROUNDS):
     return v, n
 
 
-def swap_verdicts(poc, rounds=REF_ROUNDS):
+def swap_verdicts(poc, rounds=SWAP_ROUNDS):
     """Verdicts with the vulnerable build standing in for the fixed one, until one fails: (last
     verdict, verdicts used). A deterministic reference fails the first; a flaky one can pass a
     round by luck when its crash misses all 3 runs on the stand-in."""

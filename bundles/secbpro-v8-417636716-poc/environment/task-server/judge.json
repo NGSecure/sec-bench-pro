@@ -13,5 +13,6 @@
   "fixed_timeout_ok": false,
   "fixed_oom_ok": false,
   "disable_aslr": false,
-  "cpu_affinity": 4
+  "cpu_affinity": 4,
+  "selfcheck_rounds": 300
 }

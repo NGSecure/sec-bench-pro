@@ -18,6 +18,6 @@ RUN set -eux; \
     command -v curl >/dev/null 2>&1 || command -v python3 >/dev/null 2>&1 \
       || { apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
            && rm -rf /var/lib/apt/lists/*; }
-COPY environment/submit.sh /workspace/submit.sh
+@@RESTORE_TREE@@COPY environment/submit.sh /workspace/submit.sh
 RUN chmod 755 /workspace/submit.sh
 WORKDIR @@WORK_DIR@@

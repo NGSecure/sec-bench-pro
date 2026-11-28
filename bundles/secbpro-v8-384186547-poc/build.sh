@@ -23,7 +23,7 @@ VER=v0.0.1
 MAIN_TAG="secbpro_v8_384186547_main:${VER}"
 TS_TAG="secbpro_v8_384186547_task_server:${VER}"
 TS_CPUS="${TS_CPUS:-2}"
-TS_MEMORY="${TS_MEMORY:-8192M}"
+TS_MEMORY="${TS_MEMORY:-16384M}"
 
 # Echo a local reference for the image: as given if present or pullable (3 tries, for
 # transient registry or credential-helper errors), else the same digest from Google's

@@ -244,6 +244,27 @@ def test_reference_verdicts():
               (vv["reason"], n))
     finally:
         ts.run_once = orig
+    check("ref verdicts: default rounds", ts.REF_ROUNDS == 10 and ts.SWAP_ROUNDS == 10)
+    # judge.json selfcheck_rounds raises the reference's rounds only (the swap check keeps 10)
+    import importlib.util
+    cfg = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
+    json.dump({"work_dir": "/src/v8", "binary": "out/x64.release/d8", "options": "--sandbox-testing",
+               "error_type": "SANDBOX_VIOLATION", "selfcheck_rounds": 300}, cfg)
+    cfg.close()
+    old = os.environ["SECB_JUDGE_CONFIG"]
+    try:
+        os.environ["SECB_JUDGE_CONFIG"] = cfg.name
+        spec = importlib.util.spec_from_file_location("task_server_rounds", os.path.join(TS_DIR, "task_server.py"))
+        ts2 = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(ts2)
+        check("ref verdicts: selfcheck_rounds read", ts2.REF_ROUNDS == 300 and ts2.SWAP_ROUNDS == 10,
+              (ts2.REF_ROUNDS, ts2.SWAP_ROUNDS))
+        ts2.run_once, calls = fake_runs({"vul": [fail] * 299 * ts2.ATTEMPTS + [good], "fix": [clean]})
+        v, n = ts2.reference_verdicts(b"poc")
+        check("ref verdicts: rare race passes in verdict 300", v["pass"] and n == 300, (v["reason"], n))
+    finally:
+        os.environ["SECB_JUDGE_CONFIG"] = old
+        os.unlink(cfg.name)
 
 
 def test_validate():
@@ -1087,6 +1108,93 @@ def test_generator_settings():
     check("guard table texts end like V8 messages", all(
         m.startswith(("Check failed: ", "Fatal process out of memory: ")) for v in mb.FIXED_EXPECTED_FATAL.values() for m in v))
     check("cpu table positive", all(isinstance(n, int) and n > 0 for n in mb.CPU_AFFINITY.values()))
+    check("selfcheck rounds positive", all(isinstance(n, int) and n > 10 for n in mb.SELFCHECK_ROUNDS.values()))
+    import re as _re
+    check("task-server resources well-formed", all(
+        set(r) <= {"cpus", "memory"} and _re.fullmatch(r"[1-9]\d*", r.get("cpus", "1"))
+        and _re.fullmatch(r"[1-9]\d*M", r.get("memory", "1M")) for r in mb.TS_RESOURCES.values()), mb.TS_RESOURCES)
+    check("restore-tree instances are V8", all(p == "v8" for p, _ in mb.RESTORE_TREE))
+    rev = "cd6944c05d268ef7d734cf33af86bc94c6172c2f"
+    step = mb.restore_tree_step("/src/v8", rev)
+    check("restore step: one RUN, ends with a newline", step.count("\nRUN ") == 1 and step.endswith("\n")
+          and all(l.startswith(("#", "RUN ", "    ")) for l in step.splitlines()), step)
+    check("restore step: revision, both mirrors, re-sanitized, verified", "rev=%s;" % rev in step
+          and all(u in step for u in mb.V8_GIT_URLS) and "secb-sanitize-git /src/v8;" in step
+          and "git config --unset secb.originalHead" in step
+          and 'test "$(git config --get secb.originalHead)" = "$rev"' in step)
+    for bad in (("/src/v8", "cd6944c0"), ("/src/v8; rm -rf /", rev), ("src/v8", rev)):
+        try:
+            mb.restore_tree_step(*bad)
+            check("restore step rejects %r" % (bad,), False)
+        except SystemExit:
+            check("restore step rejects %r" % (bad,), True)
+
+
+def test_restore_tree(upstream):
+    """make_bundle.restore_tree_step(), run as Docker runs a RUN line, on a sanitized tree at a newer
+    head (as in the published images): the tree becomes the declared revision's, with history
+    reduced to one commit by upstream's own sanitize-git; the untracked prebuilt engine stays."""
+    sanitize = upstream and os.path.join(upstream, "base", "v8", "sanitize-git")
+    if not sanitize or not os.path.isfile(sanitize) or not shutil.which("git") or not shutil.which("sh"):
+        print("skip  restore-tree test (needs --upstream, git and sh)")
+        return
+    sys.path.insert(0, HERE)
+    import make_bundle as mb
+    import subprocess
+    d = tempfile.mkdtemp()
+    saved = mb.V8_GIT_URLS
+    try:
+        def git(cwd, *a):
+            return subprocess.run(["git", "-C", cwd, "-c", "user.email=t@t", "-c", "user.name=t"] + list(a),
+                                  check=True, capture_output=True, text=True).stdout.strip()
+        up, work, bin_dir = os.path.join(d, "upstream"), os.path.join(d, "src", "v8"), os.path.join(d, "bin")
+        os.makedirs(os.path.join(up, "src"))
+        os.makedirs(bin_dir)
+        shutil.copyfile(sanitize, os.path.join(bin_dir, "secb-sanitize-git"))
+        os.chmod(os.path.join(bin_dir, "secb-sanitize-git"), 0o755)
+        git(d, "init", "-q", up)
+        open(os.path.join(up, "src", "target.cc"), "w").write("int f() { return 1; }  // vulnerable\n")
+        open(os.path.join(up, ".gitignore"), "w").write("/out\n")
+        git(up, "add", "-A")
+        git(up, "commit", "-q", "-m", "vulnerable revision")
+        vul = git(up, "rev-parse", "HEAD")
+        vul_tree = git(up, "rev-parse", "HEAD^{tree}")
+        open(os.path.join(up, "src", "target.cc"), "w").write("int f() { return 0; }  // fixed\n")
+        os.makedirs(os.path.join(up, "test"))
+        open(os.path.join(up, "test", "regress-1.js"), "w").write("regression test\n")
+        git(up, "add", "-A")
+        git(up, "commit", "-q", "-m", "fix")
+        stale = git(up, "rev-parse", "HEAD")
+        git(up, "config", "uploadpack.allowAnySHA1InWant", "true")
+        # the published image: a clone at the newer head, sanitized, with a prebuilt engine in out/
+        subprocess.run(["git", "clone", "-q", up, work], check=True)
+        os.makedirs(os.path.join(work, "out", "x64.release"))
+        open(os.path.join(work, "out", "x64.release", "d8"), "w").write("engine\n")
+        env = dict(os.environ, PATH=bin_dir + os.pathsep + os.environ.get("PATH", ""))
+        subprocess.run([os.path.join(bin_dir, "secb-sanitize-git"), work], check=True, env=env, capture_output=True)
+        check("restore: published-image stand-in records the newer head",
+              git(work, "config", "--get", "secb.originalHead") == stale)
+        mb.V8_GIT_URLS = ["file://" + os.path.join(d, "missing"), "file://" + up]
+        step = mb.restore_tree_step(work, vul)
+        body = "".join(l + "\n" for l in step.splitlines() if not l.startswith("#"))
+        body = body[len("RUN "):].replace("\\\n", "").replace("sleep 15", "sleep 0")
+        p = subprocess.run(["sh", "-c", body], env=env, capture_output=True, text=True, cwd=d)
+        check("restore: step succeeds (second mirror)", p.returncode == 0, p.stderr[-1500:])
+        check("restore: originalHead is the declared revision", git(work, "config", "--get", "secb.originalHead") == vul)
+        check("restore: one commit, no remote", git(work, "rev-list", "--all", "--count") == "1"
+              and git(work, "remote") == "")
+        check("restore: tree is the declared revision's", git(work, "rev-parse", "HEAD^{tree}") == vul_tree)
+        check("restore: fix-only files gone, engine kept", not os.path.exists(os.path.join(work, "test", "regress-1.js"))
+              and open(os.path.join(work, "out", "x64.release", "d8")).read() == "engine\n")
+        mb.V8_GIT_URLS = ["file://" + os.path.join(d, "missing")]
+        body = "".join(l + "\n" for l in mb.restore_tree_step(work, stale).splitlines() if not l.startswith("#"))
+        body = body[len("RUN "):].replace("\\\n", "").replace("sleep 15", "sleep 0")
+        p = subprocess.run(["sh", "-c", body], env=env, capture_output=True, text=True, cwd=d)
+        check("restore: unreachable mirrors fail the build", p.returncode != 0
+              and git(work, "config", "--get", "secb.originalHead") == vul)
+    finally:
+        mb.V8_GIT_URLS = saved
+        shutil.rmtree(d)
 
 
 def main():
@@ -1095,6 +1203,7 @@ def main():
     a = ap.parse_args()
     for t in (test_classify, test_fixed_clean, test_argv0, test_sandbox_filter_exit, test_fixed_guard,
               test_cpu_affinity, test_leak_check_revision, test_generator_settings,
+              lambda: test_restore_tree(a.upstream),
               test_verify, test_reference_verdicts, test_validate,
               lambda: test_strip(a.upstream), test_seccomp, test_seccomp_i386, test_leak_check_libraries,
               test_leak_check_source_tree, test_leak_check_fix_patch, test_runtime_plan,
