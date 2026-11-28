@@ -18,6 +18,22 @@ RUN set -eux; \
     command -v curl >/dev/null 2>&1 || command -v python3 >/dev/null 2>&1 \
       || { apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
            && rm -rf /var/lib/apt/lists/*; }
+# The published image skipped the upstream Dockerfile's checkout of the vulnerable revision
+# (its tree is a newer V8 head with the fix): redo that checkout, then the image's own
+# sanitizing, so the tree is the vulnerable revision with history reduced to one commit.
+RUN set -eux; cd /src/v8; rev=b7cb9392b793435808a5d9dd82b3ed1fed060bfa; ok=0; \
+    for url in https://github.com/v8/v8.git https://chromium.googlesource.com/v8/v8.git; do \
+      for i in 1 2 3; do \
+        if git fetch --depth=1 --no-tags "$url" "$rev"; then ok=1; break 2; fi; sleep 15; \
+      done; \
+    done; \
+    test "$ok" = 1; \
+    git -c advice.detachedHead=false checkout -q -f --detach FETCH_HEAD; \
+    test "$(git rev-parse HEAD)" = "$rev"; \
+    git config --unset secb.originalHead || true; \
+    secb-sanitize-git /src/v8; \
+    test "$(git config --get secb.originalHead)" = "$rev"; \
+    test -z "$(git status --porcelain --untracked-files=no)"
 COPY environment/submit.sh /workspace/submit.sh
 RUN chmod 755 /workspace/submit.sh
 WORKDIR /src/v8

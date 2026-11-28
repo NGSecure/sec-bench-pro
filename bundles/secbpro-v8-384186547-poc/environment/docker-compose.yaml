@@ -42,7 +42,7 @@ services:
       resources:
         limits:
           cpus: "2"
-          memory: 8192M
+          memory: 16384M
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9111/health')"]
       interval: 3s

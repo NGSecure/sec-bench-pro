@@ -8,5 +8,6 @@
   ],
   "shared_libraries": [
     "js/src/jit-test/lib/*.js"
-  ]
+  ],
+  "vul_revision": null
 }

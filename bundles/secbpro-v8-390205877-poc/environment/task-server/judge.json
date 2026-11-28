@@ -23,8 +23,9 @@
     "TypedArraySet",
     "WasmTierUpFunction"
   ],
-  "asan_options": "abort_on_error=1:detect_leaks=0:symbolize=0:color=never",
+  "asan_options": "handle_sigill=2:abort_on_error=1:detect_leaks=0:symbolize=0:color=never",
   "fixed_timeout_ok": false,
   "fixed_oom_ok": false,
-  "disable_aslr": false
+  "disable_aslr": false,
+  "asan_sandbox_filter_exit": true
 }

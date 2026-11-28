@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Drop privileges, confine, then exec the JS engine (one PoC run).
 
-    python3 -I -S sandbox_exec.py <status_fd> <uid> <disable_aslr 0|1> -- <argv...>
+    python3 -I -S sandbox_exec.py <status_fd> <uid> <disable_aslr 0|1> [<cpus>] -- <argv...>
 
 task_server.py starts this wrapper as a fresh single-threaded process (no
 preexec_fn in the multi-threaded server), so everything below runs before the
@@ -10,7 +10,10 @@ is the PID ASan prints in its report header.
 
 1. oom_score_adj = 1000, so a memory blow-up kills the engine, not the server;
 2. optional personality(ADDR_NO_RANDOMIZE) for the one upstream instance that
-   was recorded with ASLR off (meta.json disable_aslr);
+   was recorded with ASLR off (meta.json disable_aslr); optional CPU affinity:
+   <cpus> > 0 pins the run to that many of the CPUs this process may use (chosen
+   at random per run), for the instances whose reference crash is a race that
+   depends on how many cores run the engine's threads (judge.json cpu_affinity);
 3. become <uid>:<uid> with no supplementary groups (a fresh uid per run),
    keeping only CAP_DAC_OVERRIDE, and only until execve. The engine binary is
    execute-only (mode 0711), so a PoC cannot read it (d8 readbuffer() and the
@@ -24,7 +27,9 @@ is the PID ASan prints in its report header.
    uid, no file capabilities, empty inheritable and ambient sets), so the
    engine runs dumpable, with no capabilities, unable to open its own binary;
 4. rlimits: no core files, 256 MiB per written file;
-5. PR_SET_NO_NEW_PRIVS + a seccomp filter (x86-64 only):
+5. PR_SET_NO_NEW_PRIVS + a seccomp filter, the same policy for x86-64 system
+   calls and for i386 ones (an ia32 build of the engine makes those; on an
+   x86-64 kernel they arrive as AUDIT_ARCH_I386 with their own numbers):
    * no new processes: fork/vfork fail, clone only with CLONE_THREAD,
      clone3 -> ENOSYS (glibc then falls back to clone for threads);
    * no synthetic crash signals: kill/tkill/rt_sigqueueinfo may not send
@@ -33,9 +38,12 @@ is the PID ASan prints in its report header.
      raise() is tgkill(SIGABRT)), so a genuine assertion or an ASan abort ends
      the process exactly as upstream, but a script cannot fake a fault signal;
    * no tracing or cross-process memory access, no namespaces or mounts, no
-     SysV/POSIX message IPC, io_uring, bpf, perf, userfaultfd or keyrings;
-   * sockets: AF_UNIX only.
-   Every denial returns an errno; the filter never kills.
+     SysV/POSIX message IPC, io_uring, bpf, perf, userfaultfd or keyrings
+     (i386: nor their ipc() multiplexer forms SEMGET/MSGGET/SHMGET);
+   * sockets: AF_UNIX only. An i386 socketcall(SYS_SOCKET) is refused for
+     every domain: its arguments sit behind a pointer the filter cannot read.
+   Every denial returns an errno; only a system call of another architecture
+   (none exists on an x86-64 kernel) kills the process.
 
 If any step fails, the reason is written to <status_fd> and the wrapper exits
 125 without running the engine. The fd is close-on-exec, so the server reads EOF
@@ -45,6 +53,7 @@ with no data exactly when execve succeeded.
 import ctypes
 import errno
 import os
+import random
 import resource
 import struct
 import sys
@@ -66,6 +75,22 @@ DENY_ALL = ("fork", "vfork", "execveat", "pidfd_send_signal", "pidfd_open", "pid
             "userfaultfd", "unshare", "setns", "mount", "umount2", "pivot_root", "chroot",
             "keyctl", "add_key", "request_key", "shmget", "semget", "msgget", "mq_open",
             "io_uring_setup", "io_uring_enter", "io_uring_register")
+# i386 numbers of the same calls (asm/unistd_32.h), plus i386's own forms: the old umount,
+# and the socketcall() and ipc() multiplexers
+NR32 = dict(clone=120, fork=2, vfork=190, execveat=358, clone3=435, socket=359,
+            kill=37, tkill=238, tgkill=270, rt_sigqueueinfo=178, rt_tgsigqueueinfo=335,
+            pidfd_send_signal=424, pidfd_open=434, pidfd_getfd=438,
+            ptrace=26, process_vm_readv=347, process_vm_writev=348, kcmp=349,
+            perf_event_open=336, bpf=357, userfaultfd=374,
+            unshare=310, setns=346, mount=21, umount2=52, pivot_root=217, chroot=61,
+            keyctl=288, add_key=286, request_key=287,
+            shmget=395, semget=393, msgget=399, mq_open=277,
+            io_uring_setup=425, io_uring_enter=426, io_uring_register=427,
+            umount=22, socketcall=102, ipc=117)
+DENY_ALL_32 = DENY_ALL + ("umount",)
+SYS_SOCKET = 1                       # socketcall() call number
+IPC_GET_CALLS = (2, 13, 23)          # ipc() SEMGET, MSGGET, SHMGET (low 16 bits; the high ones are a version)
+AUDIT_ARCH_X86_64, AUDIT_ARCH_I386 = 0xC000003E, 0x40000003
 FAULT_SIGNALS = (4, 5, 7, 8, 11, 31)   # SIGILL SIGTRAP SIGBUS SIGFPE SIGSEGV SIGSYS
 SIGABRT = 6
 CLONE_THREAD = 0x00010000
@@ -77,35 +102,56 @@ PR_SET_NO_NEW_PRIVS, PR_SET_SECCOMP, SECCOMP_MODE_FILTER = 38, 22, 2
 
 def seccomp_program():
     """Classic BPF with symbolic labels, assembled to struct sock_filter[]."""
-    LD, JEQ, JGE, JSET, RET = 0x20, 0x15, 0x35, 0x45, 0x06
+    LD, JEQ, JGE, JSET, AND, RET = 0x20, 0x15, 0x35, 0x45, 0x54, 0x06
     ALLOW, KILL = 0x7FFF0000, 0x80000000                       # RET_ALLOW, RET_KILL_PROCESS
     EPERM, ENOSYS = 0x00050000 | errno.EPERM, 0x00050000 | errno.ENOSYS
     arg = lambda i: 16 + 8 * i                                 # low 32 bits of args[i]
     prog = []                                                  # (code, jt, jf, k)
+    labels = {}
 
     def op(code, k, jt=0, jf=0):
         prog.append([code, jt, jf, k])
 
-    op(LD, 4)                                                  # arch
-    op(JEQ, 0xC000003E, 1, 0)
-    op(RET, KILL)
-    op(LD, 0)                                                  # syscall nr
-    op(JGE, 0x40000000, "eperm", 0)                            # x32 ABI
-    for name in DENY_ALL:
-        op(JEQ, NR[name], "eperm", 0)
-    op(JEQ, NR["clone3"], "enosys", 0)
-    op(JEQ, NR["clone"], "clone", 0)
-    op(JEQ, NR["socket"], "socket", 0)
-    for name in ("kill", "tkill", "rt_sigqueueinfo"):
-        op(JEQ, NR[name], "sig_arg1_strict", 0)
-    op(JEQ, NR["tgkill"], "sig_arg2", 0)
-    op(JEQ, NR["rt_tgsigqueueinfo"], "sig_arg2", 0)
-    op(RET, ALLOW)
-    labels = {}
-
     def label(name):
         labels[name] = len(prog)
 
+    def table(nr, deny):
+        """The per-call rules; the argument positions are the same in both ABIs."""
+        for name in deny:
+            op(JEQ, nr[name], "eperm", 0)
+        op(JEQ, nr["clone3"], "enosys", 0)
+        op(JEQ, nr["clone"], "clone", 0)
+        op(JEQ, nr["socket"], "socket", 0)
+        for name in ("kill", "tkill", "rt_sigqueueinfo"):
+            op(JEQ, nr[name], "sig_arg1_strict", 0)
+        op(JEQ, nr["tgkill"], "sig_arg2", 0)
+        op(JEQ, nr["rt_tgsigqueueinfo"], "sig_arg2", 0)
+
+    op(LD, 4)                                                  # arch
+    op(JEQ, AUDIT_ARCH_X86_64, "x86_64", 0)
+    op(JEQ, AUDIT_ARCH_I386, "i386", 0)
+    op(RET, KILL)
+    label("x86_64")
+    op(LD, 0)                                                  # syscall nr
+    op(JGE, 0x40000000, "eperm", 0)                            # x32 ABI
+    table(NR, DENY_ALL)
+    op(RET, ALLOW)
+    label("i386")
+    op(LD, 0)
+    table(NR32, DENY_ALL_32)
+    op(JEQ, NR32["socketcall"], "socketcall", 0)
+    op(JEQ, NR32["ipc"], "ipc", 0)
+    op(RET, ALLOW)
+
+    label("socketcall")
+    op(LD, arg(0))
+    op(JEQ, SYS_SOCKET, "eperm", "allow")
+    label("ipc")
+    op(LD, arg(0))
+    op(AND, 0xFFFF)
+    for c in IPC_GET_CALLS:
+        op(JEQ, c, "eperm", 0)
+    op(RET, ALLOW)
     label("clone")
     op(LD, arg(0))
     op(JSET, CLONE_THREAD, "allow", "eperm")
@@ -178,10 +224,20 @@ def install_seccomp(libc):
         raise OSError(ctypes.get_errno(), "PR_SET_SECCOMP")
 
 
-def confine(uid, disable_aslr):
+def pin_cpus(n):
+    """Restrict this process (and so the engine and every thread it starts) to n of the CPUs it may
+    use now; fewer available leaves it as it is. Returns the CPUs in use."""
+    allowed = sorted(os.sched_getaffinity(0))
+    if 0 < n < len(allowed):
+        os.sched_setaffinity(0, random.SystemRandom().sample(allowed, n))
+    return sorted(os.sched_getaffinity(0))
+
+
+def confine(uid, disable_aslr, cpus=0):
     libc = ctypes.CDLL(None, use_errno=True)
     with open("/proc/self/oom_score_adj", "w") as f:
         f.write("1000")
+    pin_cpus(cpus)
     if disable_aslr:
         # Docker's default seccomp profile may refuse this flag; the caller records it.
         if libc.personality(ctypes.c_ulong(0x0040000)) == -1:
@@ -202,13 +258,17 @@ def confine(uid, disable_aslr):
 
 def main():
     status_fd, uid, aslr = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3] == "1"
-    if sys.argv[4] != "--" or len(sys.argv) < 6:
+    rest = sys.argv[4:]
+    cpus = 0
+    if rest and rest[0] != "--" and rest[0].isdigit():
+        cpus, rest = int(rest[0]), rest[1:]
+    if not rest or rest[0] != "--" or len(rest) < 2:
         os.write(status_fd, b"usage error")
         os._exit(125)
-    argv = sys.argv[5:]
+    argv = rest[1:]
     os.set_inheritable(status_fd, False)          # closed by a successful execve
     try:
-        confine(uid, aslr)
+        confine(uid, aslr, cpus)
         os.execve(argv[0], argv, os.environ)
     except BaseException as exc:                  # never run the engine half-confined
         try:
